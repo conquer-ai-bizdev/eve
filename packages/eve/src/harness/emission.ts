@@ -32,7 +32,6 @@ import {
 } from "#protocol/message.js";
 import type { RunMode } from "#shared/run-mode.js";
 import { hasEmptyDeliverySentinel } from "#shared/empty-delivery.js";
-import { toError } from "#shared/errors.js";
 import type { JsonObject } from "#shared/json.js";
 import {
   createRuntimeToolResultFromStepResult,
@@ -52,6 +51,7 @@ import { isAuthorizationSignal, isPendingAuthorizationToolOutput } from "#harnes
 import { contextStorage } from "#context/container.js";
 import { readToolInterrupt } from "#harness/tool-interrupts.js";
 import { createProviderStreamActionBatch } from "#harness/stream-actions.js";
+import { normalizeModelStreamError } from "#harness/model-call-error.js";
 import type {
   HarnessEmitFn,
   HarnessSession,
@@ -619,7 +619,7 @@ export async function emitStreamContent(
         // so plain-object shapes (structured-clone survivors, typed
         // gateway payloads) keep their `message`, `name`, `stack`, and
         // `cause` instead of degrading to `new Error("[object Object]")`.
-        streamError = toError(part.error);
+        streamError = normalizeModelStreamError(part.error);
         break;
       case "abort":
         // The SDK does not resolve step results for aborted in-flight steps.
