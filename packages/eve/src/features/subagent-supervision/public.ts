@@ -150,6 +150,8 @@ export type ChildEventType = ChildSessionEvent["type"];
 export type ChildSessionStreamEvent = ChildSessionEvent & {
   /** Durable timestamp copied from the public Eve session stream. */
   readonly at?: string;
+  /** Zero-based event position inside one durable stream item. */
+  readonly offset?: number;
   readonly index: number;
 };
 
@@ -167,6 +169,8 @@ export interface ChildSnapshot {
   };
   readonly childSessionId: string;
   readonly events: readonly ChildSessionStreamEvent[];
+  /** Events before this absolute stream index are outside the returned window. */
+  readonly omittedBeforeIndex?: number;
   /** Opaque cursor immediately after the fixed stream window returned here. */
   readonly nextCursor: ChildCursor;
   readonly status: ChildLifecycleStatus;

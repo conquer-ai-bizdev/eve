@@ -123,17 +123,18 @@ async function buildSnapshot(
   childSessionId: string,
   requestedCursor: number,
   eventStartIndex?: number,
+  tailFromStart = false,
 ): Promise<ChildSnapshot> {
   normalizeCursor(requestedCursor);
   const record = await getWorkflowRunRecord(childSessionId);
   const run = getRun<{ readonly output?: unknown }>(childSessionId);
   let status = normalizeStatus(String(await run.status));
-  let history = await readFiniteEvents(run, eventStartIndex);
+  let history = await readFiniteEvents(run, eventStartIndex, tailFromStart);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const latestStatus = normalizeStatus(String(await run.status));
     if (latestStatus === status) break;
     status = latestStatus;
-    history = await readFiniteEvents(run, eventStartIndex);
+    history = await readFiniteEvents(run, eventStartIndex, tailFromStart);
   }
   const { events, nextCursor } = history;
   if (requestedCursor > nextCursor) {
@@ -142,12 +143,8 @@ async function buildSnapshot(
     );
   }
   const terminal = await terminalResult(run, status, events);
-  const waitingEvent = [...events]
-    .reverse()
-    .find((event) => event.type === "session.waiting");
-  const latestReceived = [...events]
-    .reverse()
-    .find((event) => event.type === "message.received");
+  const waitingEvent = [...events].reverse().find((event) => event.type === "session.waiting");
+  const latestReceived = [...events].reverse().find((event) => event.type === "message.received");
 
   return {
     schemaVersion: 1,
@@ -157,6 +154,9 @@ async function buildSnapshot(
     },
     childSessionId,
     events,
+    ...(history.omittedBeforeIndex === undefined
+      ? {}
+      : { omittedBeforeIndex: history.omittedBeforeIndex }),
     nextCursor: encodeCursor(nextCursor),
     status,
     ...(terminal === undefined ? {} : { terminal }),
@@ -171,18 +171,27 @@ async function buildSnapshot(
 async function readFiniteEvents(
   run: Run<unknown>,
   requestedStartIndex?: number,
-): Promise<{ readonly events: ChildSessionStreamEvent[]; readonly nextCursor: number }> {
-  const startIndex = requestedStartIndex ?? 0;
-  const windowSize = requestedStartIndex === undefined ? INSPECTION_WINDOW_CHUNKS : EVENT_WINDOW_CHUNKS;
-  const stream = run.getReadable<Uint8Array>({ startIndex });
+  tailFromStart = false,
+): Promise<{
+  readonly events: ChildSessionStreamEvent[];
+  readonly nextCursor: number;
+  readonly omittedBeforeIndex?: number;
+}> {
+  const earliestIndex = requestedStartIndex ?? 0;
+  const tailWindow = requestedStartIndex === undefined || tailFromStart;
+  const windowSize = tailWindow ? INSPECTION_WINDOW_CHUNKS : EVENT_WINDOW_CHUNKS;
+  let stream = run.getReadable<Uint8Array>({ startIndex: earliestIndex });
   const tailIndex = await stream.getTailIndex();
+  const startIndex = tailWindow
+    ? Math.max(earliestIndex, tailIndex - windowSize + 1)
+    : earliestIndex;
   if (tailIndex < startIndex) {
     await stream.cancel();
     return { events: [], nextCursor: Math.max(0, tailIndex + 1) };
   }
-  if (requestedStartIndex === undefined && tailIndex >= windowSize) {
+  if (startIndex !== earliestIndex) {
     await stream.cancel();
-    throw new Error(`Child inspection exceeds the ${windowSize}-chunk safety limit`);
+    stream = run.getReadable<Uint8Array>({ startIndex });
   }
 
   const reader = stream.getReader();
@@ -192,13 +201,14 @@ async function readFiniteEvents(
     for (let index = startIndex; index <= endIndex; index += 1) {
       const item = await reader.read();
       if (item.done) break;
-      for (const event of parseEventChunk(item.value)) {
+      for (const [offset, event] of parseEventChunk(item.value).entries()) {
         const value = observableEvent(event);
         if (value !== undefined) {
           events.push({
             ...value,
             ...(event.meta?.at === undefined ? {} : { at: event.meta.at }),
             index,
+            ...(offset === 0 ? {} : { offset }),
           });
         }
       }
@@ -208,7 +218,11 @@ async function readFiniteEvents(
     reader.releaseLock();
   }
 
-  return { events, nextCursor: endIndex + 1 };
+  return {
+    events,
+    nextCursor: endIndex + 1,
+    ...(startIndex === 0 ? {} : { omittedBeforeIndex: startIndex }),
+  };
 }
 
 function parseEventChunk(value: Uint8Array): HandleMessageStreamEvent[] {
@@ -232,9 +246,7 @@ function isHandleMessageStreamEvent(value: unknown): value is HandleMessageStrea
   );
 }
 
-function observableEvent(
-  event: HandleMessageStreamEvent,
-): ChildSessionEvent | undefined {
+function observableEvent(event: HandleMessageStreamEvent): ChildSessionEvent | undefined {
   if (event.type === "reasoning.appended") {
     return undefined;
   }
@@ -472,7 +484,11 @@ async function waitForChild(
   }
   const immediateReason = snapshotWakeReason(initial, initialStatus, eventTypes, initialIndex);
   if (immediateReason !== undefined) {
-    return { reason: immediateReason, snapshot: initial, timedOut: false };
+    return {
+      reason: immediateReason,
+      snapshot: await buildSnapshot(options.childSessionId, initialIndex, initialIndex, true),
+      timedOut: false,
+    };
   }
 
   let cursor = decodeCursor(initial.nextCursor);
@@ -481,12 +497,21 @@ async function waitForChild(
     const latest = await buildSnapshot(options.childSessionId, cursor, cursor);
     const reason = snapshotWakeReason(latest, initialStatus, eventTypes, cursor);
     if (reason !== undefined) {
-      return { reason, snapshot: latest, timedOut: false };
+      return {
+        reason,
+        snapshot: await buildSnapshot(options.childSessionId, initialIndex, initialIndex, true),
+        timedOut: false,
+      };
     }
     cursor = decodeCursor(latest.nextCursor);
   }
 
-  const finalSnapshot = await buildSnapshot(options.childSessionId, initialIndex);
+  const finalSnapshot = await buildSnapshot(
+    options.childSessionId,
+    initialIndex,
+    initialIndex,
+    true,
+  );
   if (options.abortSignal.aborted) {
     return { reason: "cancelled", snapshot: finalSnapshot, timedOut: false };
   }

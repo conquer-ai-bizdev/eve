@@ -27,9 +27,10 @@ event definitions or inspect Workflow storage.
 ## Invariants
 
 - Every operation rechecks ancestor lineage.
-- Snapshots read one fixed session-stream tail or cursor window. The control
-  package joins public action lifecycle events by their durable call IDs and
-  assigns bounded model-facing timeline IDs.
+- Snapshots read one fixed session-stream tail or cursor window. Long histories
+  return the newest bounded window with `omittedBeforeIndex`; event positions
+  stay absolute so model-facing timeline IDs remain stable across inspections.
+  The control package joins public action lifecycle events by durable call ID.
 - Mailbox cancellation polling resumes from an absolute stream cursor; stop
   lineage uses dedicated spawn records rather than conversation history.
 - One deterministic coordinator token owns each background spawn call. The
