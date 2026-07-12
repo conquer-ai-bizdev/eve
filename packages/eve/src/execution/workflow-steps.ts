@@ -68,6 +68,16 @@ import {
   turnWorkflowReference,
 } from "#execution/workflow-runtime.js";
 import { resumeHook } from "#internal/workflow/runtime.js";
+import {
+  acknowledgeCancelledSubagentTurn,
+  recordFailedSubagentTurn,
+  recordStartedSubagentTurn,
+  reserveSubagentTurn,
+} from "#features/subagent-supervision/messages.js";
+import {
+  watchSubagentControlCancellation,
+  type SubagentControlCancellationWatch,
+} from "#features/subagent-supervision/control-cancellation.js";
 
 /**
  * Result of one durable harness step, consumed by the turn workflow.
@@ -104,6 +114,16 @@ export type DurableStepResult =
     };
 
 export type { TurnStepInput };
+
+/** Persists the turn acknowledgement emitted from the durable turn inbox. */
+export async function acknowledgeSubagentTurnCancellationStep(input: {
+  readonly sessionId: string;
+  readonly turnId: string;
+}): Promise<void> {
+  "use step";
+
+  await acknowledgeCancelledSubagentTurn(input.sessionId, input.turnId);
+}
 
 /**
  * Runs one atomic harness step inside a durable `"use step"` boundary.
@@ -244,6 +264,13 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   }
 
   const writer = input.parentWritable.getWriter();
+  const controlCancellation: SubagentControlCancellationWatch | undefined =
+    initialSession.subagentDepth !== undefined &&
+    initialSession.subagentDepth > 0 &&
+    input.controlTurnId !== undefined
+      ? watchSubagentControlCancellation(initialSession.sessionId, input.controlTurnId)
+      : undefined;
+  const turnAbortSignal = composeAbortSignals(input.abortSignal, controlCancellation?.signal);
   const hookRegistry = bundle.hookRegistry;
   const dynamicInstructionsResolvers = bundle.resolvedAgent.dynamicInstructionsResolvers ?? [];
   const dynamicSkillResolvers = bundle.resolvedAgent.dynamicSkillResolvers ?? [];
@@ -297,66 +324,74 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
 
   const mode = ctx.require(ModeKey);
 
-  let stepResult = await runStep(ctx, initialSession, async (enrichedSession) => {
-    const schemaSession = resolveEffectiveOutputSchema({
-      agentOutputSchema: bundle.turnAgent.outputSchema,
-      input: resolved,
-      mode,
-      session: enrichedSession,
-    });
-    if (completedAuths) {
-      const emissionState = getHarnessEmissionState(schemaSession.state);
-      for (const { name, authorization } of completedAuths) {
-        await handleEvent(
-          createAuthorizationCompletedEvent({
-            authorization,
-            name,
-            outcome: "authorized",
-            sequence: emissionState.sequence,
-            stepIndex: emissionState.stepIndex,
-            turnId: emissionState.turnId,
-          }),
-        );
-      }
-    }
-
-    const capabilities = ctx.get(CapabilitiesKey);
-
-    const runHarnessStep = async (
-      lifecycleSession: HarnessSession,
-      stepInput: StepInput | undefined,
-    ): Promise<StepResult> => {
-      const skillRoot = await resolveSessionSkillRoot({
-        ctx,
-        turnAgent: bundle.turnAgent,
-      });
-      const refreshedSession = refreshSessionFromTurnAgent({
-        compactionOverrides: {
-          thresholdPercent: bundle.resolvedAgent.config.compaction?.thresholdPercent,
-        },
-        session: lifecycleSession,
-        skillRoot,
-        turnAgent: bundle.turnAgent,
-      });
-
-      const step = createExecutionNodeStep({
-        abortSignal: input.abortSignal,
-        capabilities,
-        createRuntime: createWorkflowRuntime,
-        handleEvent,
+  let stepResult: StepResult;
+  try {
+    stepResult = await runStep(ctx, initialSession, async (enrichedSession) => {
+      const schemaSession = resolveEffectiveOutputSchema({
+        agentOutputSchema: bundle.turnAgent.outputSchema,
+        input: resolved,
         mode,
-        modelResolutionScope: {
-          moduleMap: bundle.moduleMap,
-          nodeId: bundle.nodeId,
-        },
-        node: bundle.graph.root,
-        workflowMaxSubagents: refreshedSession.workflowMaxSubagents,
+        session: enrichedSession,
       });
-      return step(refreshedSession, stepInput);
-    };
+      if (completedAuths) {
+        const emissionState = getHarnessEmissionState(schemaSession.state);
+        for (const { name, authorization } of completedAuths) {
+          await handleEvent(
+            createAuthorizationCompletedEvent({
+              authorization,
+              name,
+              outcome: "authorized",
+              sequence: emissionState.sequence,
+              stepIndex: emissionState.stepIndex,
+              turnId: emissionState.turnId,
+            }),
+          );
+        }
+      }
 
-    return runHarnessStep(schemaSession, resolved);
-  });
+      const capabilities = ctx.get(CapabilitiesKey);
+
+      const runHarnessStep = async (
+        lifecycleSession: HarnessSession,
+        stepInput: StepInput | undefined,
+      ): Promise<StepResult> => {
+        const skillRoot = await resolveSessionSkillRoot({
+          ctx,
+          turnAgent: bundle.turnAgent,
+        });
+        const refreshedSession = refreshSessionFromTurnAgent({
+          compactionOverrides: {
+            thresholdPercent: bundle.resolvedAgent.config.compaction?.thresholdPercent,
+          },
+          session: lifecycleSession,
+          skillRoot,
+          turnAgent: bundle.turnAgent,
+        });
+
+        const step = createExecutionNodeStep({
+          abortSignal: turnAbortSignal,
+          capabilities,
+          createRuntime: createWorkflowRuntime,
+          handleEvent,
+          mode,
+          modelResolutionScope: {
+            moduleMap: bundle.moduleMap,
+            nodeId: bundle.nodeId,
+          },
+          node: bundle.graph.root,
+          workflowMaxSubagents: refreshedSession.workflowMaxSubagents,
+        });
+        return step(refreshedSession, stepInput);
+      };
+
+      return runHarnessStep(schemaSession, resolved);
+    });
+  } catch (error) {
+    writer.releaseLock();
+    throw error;
+  } finally {
+    await controlCancellation?.dispose();
+  }
 
   // Re-stamp the in-memory session's continuation token in case a
   // handler called `setContinuationToken(...)` (eg. Slack auto-anchor).
@@ -371,7 +406,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
     typeof stepResult.next === "object" &&
     "done" in stepResult.next
   ) {
-    await writer.close();
+    writer.releaseLock();
     const sessionTotals = getTurnUsageState(stepResult.session.state)?.session;
     return {
       action: "done",
@@ -415,6 +450,15 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
     serializedContext: nextSerializedContext,
     sessionState: nextState,
   };
+}
+
+function composeAbortSignals(
+  first: AbortSignal | undefined,
+  second: AbortSignal | undefined,
+): AbortSignal | undefined {
+  if (first === undefined) return second;
+  if (second === undefined) return first;
+  return AbortSignal.any([first, second]);
 }
 
 /**
@@ -577,20 +621,27 @@ export async function dispatchTurnStep(
 ): Promise<{ readonly runId: string }> {
   "use step";
 
-  const run = await startWorkflowPreferLatest(
-    turnWorkflowReference,
-    [createTurnWorkflowInput(input)],
-    {
-      allowReservedAttributes: true,
-      attributes: normalizeEveAttributes(
-        buildTurnAttributes({
-          parentSessionId: input.sessionState.sessionId,
-          requestId: input.delivery.kind === "deliver" ? input.delivery.requestId : undefined,
-          rootSessionId: readRootSessionId(input.serializedContext) ?? input.sessionState.sessionId,
-        }),
-      ),
-    },
-  );
-
-  return { runId: run.runId };
+  const sessionId = input.sessionState.sessionId;
+  await reserveSubagentTurn(sessionId, input.completionToken);
+  try {
+    const run = await startWorkflowPreferLatest(
+      turnWorkflowReference,
+      [createTurnWorkflowInput(input)],
+      {
+        allowReservedAttributes: true,
+        attributes: normalizeEveAttributes(
+          buildTurnAttributes({
+            parentSessionId: sessionId,
+            requestId: input.delivery.kind === "deliver" ? input.delivery.requestId : undefined,
+            rootSessionId: readRootSessionId(input.serializedContext) ?? sessionId,
+          }),
+        ),
+      },
+    );
+    await recordStartedSubagentTurn(sessionId, input.completionToken, run.runId);
+    return { runId: run.runId };
+  } catch (error) {
+    await recordFailedSubagentTurn(sessionId, input.completionToken);
+    throw error;
+  }
 }

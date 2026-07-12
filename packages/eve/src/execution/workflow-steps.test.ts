@@ -9,6 +9,11 @@ import { BundleKey, ChannelKey } from "#runtime/sessions/runtime-context-keys.js
 import { serializeContext } from "#context/serialize.js";
 import { setPendingRuntimeActionBatch } from "#harness/runtime-actions.js";
 import { DEFAULT_SUBAGENT_MAX_DEPTH } from "#harness/subagent-depth.js";
+import {
+  recordFailedSubagentSpawn,
+  reserveSubagentSpawn,
+} from "#features/subagent-supervision/messages.js";
+import { startCoordinatedSubagent } from "#features/subagent-supervision/coordinated-spawn.js";
 import { getPendingAuthorization, setPendingAuthorization } from "#harness/authorization.js";
 import type { HarnessSession, StepResult } from "#harness/types.js";
 import { createEmptyHookRegistry } from "#runtime/hooks/registry.js";
@@ -106,6 +111,18 @@ vi.mock("../runtime/sessions/compiled-agent-cache.js", () => ({
   getCompiledRuntimeAgentBundle: vi.fn(),
 }));
 
+vi.mock("#features/subagent-supervision/messages.js", () => ({
+  recordFailedSubagentSpawn: vi.fn(),
+  recordFailedSubagentTurn: vi.fn(),
+  recordStartedSubagentTurn: vi.fn(),
+  reserveSubagentSpawn: vi.fn(),
+  reserveSubagentTurn: vi.fn(),
+}));
+
+vi.mock("#features/subagent-supervision/coordinated-spawn.js", () => ({
+  startCoordinatedSubagent: vi.fn(),
+}));
+
 vi.mock("#compiled/@workflow/core/runtime.js", () => ({
   getRun: (...args: unknown[]) => getRunMock(...args),
   resumeHook: vi.fn(),
@@ -177,6 +194,12 @@ function createSerializedContext(): Record<string, unknown> {
 
 afterEach(() => {
   getRunMock.mockReset();
+  vi.mocked(reserveSubagentSpawn).mockReset();
+  vi.mocked(reserveSubagentSpawn).mockResolvedValue(undefined);
+  vi.mocked(recordFailedSubagentSpawn).mockReset();
+  vi.mocked(recordFailedSubagentSpawn).mockResolvedValue(undefined);
+  vi.mocked(startCoordinatedSubagent).mockReset();
+  vi.mocked(startCoordinatedSubagent).mockResolvedValue("child-run");
   startMock.mockReset();
   workflowWritesByNamespace.clear();
   vi.unstubAllGlobals();
@@ -283,7 +306,7 @@ describe("dispatchTurnStep", () => {
 });
 
 describe("dispatchRuntimeActionsStep", () => {
-  it("starts subagent child drivers on the latest deployment", async () => {
+  it("returns a reusable child identity for local background delegation", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
     const compiledArtifactsSource = {} as never;
     const compiledBundle = {
@@ -317,22 +340,14 @@ describe("dispatchRuntimeActionsStep", () => {
       turnAgent: TestTurnAgent,
     } as never;
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue(compiledBundle);
-    startMock.mockResolvedValue({ runId: "child-run" });
-    getRunMock.mockReturnValue({
-      getReadable: () =>
-        new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.close();
-          },
-        }),
-    });
+    vi.mocked(startCoordinatedSubagent).mockResolvedValue("child-run");
 
     const session = setPendingRuntimeActionBatch({
       actions: [
         {
           callId: "call-1",
           description: "Runtime action event description.",
-          input: { message: "investigate latest routing" },
+          input: { message: "investigate latest routing", mode: "background" },
           kind: "subagent-call",
           name: "delegate",
           nodeId: "subagents/delegate",
@@ -360,58 +375,57 @@ describe("dispatchRuntimeActionsStep", () => {
       sessionState,
     });
 
-    expect(result).toEqual({ results: [], sessionState: expect.any(Object) });
-    expect(startMock).toHaveBeenCalledWith(
-      workflowEntryReference,
-      [
-        expect.objectContaining({
-          input: {
-            message: expect.stringContaining("Description: Local delegate child description."),
-          },
-          limits: {
-            maxInputTokensPerSession: false,
-            maxOutputTokensPerSession: false,
-          },
-          serializedContext: expect.objectContaining({
-            "eve.channel": expect.objectContaining({
-              kind: "subagent",
-              state: expect.objectContaining({ parentContinuationToken: "turn-inbox" }),
+    expect(result).toEqual({
+      results: [
+        {
+          background: true,
+          callId: "call-1",
+          kind: "subagent-result",
+          output: { childSessionId: "child-run", status: "running" },
+          subagentName: "delegate",
+        },
+      ],
+      sessionState,
+    });
+    expect(startCoordinatedSubagent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callId: "call-1",
+        parentSessionId: "parent-session",
+        prepared: expect.objectContaining({
+          input: expect.objectContaining({
+            input: {
+              message: expect.stringContaining("Description: Local delegate child description."),
+            },
+            limits: {
+              maxInputTokensPerSession: false,
+              maxOutputTokensPerSession: false,
+            },
+            serializedContext: expect.objectContaining({
+              "eve.channel": expect.objectContaining({
+                kind: "subagent",
+                state: expect.objectContaining({ parentContinuationToken: "turn-inbox" }),
+              }),
             }),
           }),
+          options: expect.objectContaining({
+            attributes: expect.objectContaining({
+              "$eve.parent": "parent-session",
+              "$eve.root": "parent-session",
+              "$eve.type": "subagent",
+            }),
+          }),
+          useLatestDeployment: true,
+          workflowId: workflowEntryReference.workflowId,
         }),
-      ],
-      {
-        allowReservedAttributes: true,
-        attributes: expect.objectContaining({
-          "$eve.parent": "parent-session",
-          "$eve.root": "parent-session",
-          "$eve.type": "subagent",
-        }),
-        deploymentId: "latest",
-      },
+      }),
     );
-    expect(startMock).toHaveBeenCalledWith(
-      workflowEntryReference,
-      [
-        expect.objectContaining({
-          input: {
-            message: expect.stringContaining("investigate latest routing"),
-          },
-        }),
-      ],
-      expect.any(Object),
-    );
-    expect(startMock).toHaveBeenCalledWith(
-      workflowEntryReference,
-      [
-        expect.objectContaining({
-          input: {
-            message: expect.not.stringContaining("Runtime action event description."),
-          },
-        }),
-      ],
-      expect.any(Object),
-    );
+    const prepared = vi.mocked(startCoordinatedSubagent).mock.calls[0]?.[0].prepared;
+    expect(prepared?.input.serializedContext["eve.mode"]).toBe("conversation");
+    expect(prepared?.input.serializedContext["eve.channel"]).toMatchObject({
+      state: { background: true },
+    });
+    expect(prepared?.input.input.message).toContain("investigate latest routing");
+    expect(prepared?.input.input.message).not.toContain("Runtime action event description.");
   });
 
   it("returns a failed subagent result when remote session creation fails", async () => {

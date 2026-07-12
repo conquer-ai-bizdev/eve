@@ -13,6 +13,7 @@ Every agent gets an `agent` tool by default. The model calls it to delegate a su
 {
   message: string;       // everything the child needs; it does not see the parent's history
   outputSchema?: object; // when set, the child runs in task mode and returns structured output
+  mode?: "foreground" | "background"; // background returns a reusable child session immediately
 }
 ```
 
@@ -75,7 +76,14 @@ The built-in `agent` tool is the exception. Its children share the parent's sand
 
 ## What the parent sees
 
-eve lowers every subagent (built-in copy, declared, or [remote](./guides/remote-agents)) into a model-visible tool with the same `{ message, outputSchema? }` shape. The parent packs `message` with everything the child needs, since the child never sees the parent's history. Set `outputSchema` to run the child in task mode, returning structured output as the tool result.
+eve lowers every subagent into a model-visible tool. The parent packs `message`
+with everything the child needs, since the child never sees the parent's
+history. Set `outputSchema` to run the child in task mode, returning structured
+output as the tool result. Built-in and declared local subagents also accept
+`mode`: `"foreground"` is the default, while `"background"` releases the parent
+after child creation and keeps the child as a reusable conversation for
+authored supervision tools. [Remote agents](./guides/remote-agents) remain
+foreground calls and expose `{ message, outputSchema? }`.
 
 Subagent delegation is capped by default at one child-session level. Increase
 or lower that limit with `limits.maxSubagentDepth`:

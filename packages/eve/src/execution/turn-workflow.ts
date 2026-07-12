@@ -21,7 +21,10 @@ import { runProxySubagentEventStep } from "#execution/subagent-event-proxy-step.
 import { TurnExecutionCursor } from "#execution/turn-execution-cursor.js";
 import { resolveWorkflowCallbackBaseUrl } from "#execution/workflow-callback-url.js";
 import { normalizeSerializableError } from "#execution/workflow-errors.js";
-import { turnStep } from "#execution/workflow-steps.js";
+import {
+  acknowledgeSubagentTurnCancellationStep,
+  turnStep,
+} from "#execution/workflow-steps.js";
 import { resolveRuntimeActionResultsForKeys } from "#harness/runtime-actions.js";
 import type { RuntimeActionResult } from "#runtime/actions/types.js";
 
@@ -112,7 +115,7 @@ async function runTurnOwnedWorkflow(input: TurnWorkflowInput): Promise<void> {
         });
         await cursor.adopt(dispatchResult);
 
-        const results = await waitForRuntimeActionResults({
+        const waitResult = await waitForRuntimeActionResults({
           bufferedDeliveries,
           cursor,
           inboxToken: inbox.token,
@@ -121,7 +124,8 @@ async function runTurnOwnedWorkflow(input: TurnWorkflowInput): Promise<void> {
           nextDeliveryRequestId,
           pendingActionKeys,
         });
-        nextStepInput = { kind: "runtime-action-result", results };
+        if (waitResult.kind === "cancelled") return;
+        nextStepInput = { kind: "runtime-action-result", results: waitResult.results };
         continue;
       }
 
@@ -164,7 +168,10 @@ async function waitForRuntimeActionResults(input: {
   readonly iterator: AsyncIterator<TurnInboxPayload>;
   readonly nextDeliveryRequestId: () => string;
   readonly pendingActionKeys: readonly string[];
-}): Promise<readonly RuntimeActionResult[]> {
+}): Promise<
+  | { readonly kind: "cancelled" }
+  | { readonly kind: "results"; readonly results: readonly RuntimeActionResult[] }
+> {
   let pendingDeliveryRequest: string | undefined;
   const results: RuntimeActionResult[] = [...input.initialResults];
 
@@ -182,7 +189,7 @@ async function waitForRuntimeActionResults(input: {
           requestId: pendingDeliveryRequest,
         });
       }
-      return ready;
+      return { kind: "results", results: ready };
     }
 
     if (input.cursor.sessionState.hasProxyInputRequests && pendingDeliveryRequest === undefined) {
@@ -199,6 +206,13 @@ async function waitForRuntimeActionResults(input: {
     if (next.done) throw new Error("Turn inbox closed before runtime actions completed.");
 
     const value = next.value;
+    if (value.kind === "subagent-control-cancelled") {
+      await acknowledgeSubagentTurnCancellationStep({
+        sessionId: input.cursor.sessionState.sessionId,
+        turnId: input.cursor.controlToken,
+      });
+      return { kind: "cancelled" };
+    }
     if (value.kind === "runtime-action-result") {
       results.push(...value.results);
       continue;
@@ -310,6 +324,7 @@ async function runLegacyTurnWorkflow(input: TurnWorkflowInput): Promise<void> {
       }
 
       currentStepInput = {
+        controlTurnId: input.completionToken,
         input: undefined,
         parentWritable: currentStepInput.parentWritable,
         serializedContext: result.serializedContext,

@@ -15,12 +15,16 @@ export async function dispatchAndAwaitTurn(input: {
   readonly deliveryHook: SessionDeliveryHook;
   readonly mode: RunMode;
   readonly parentWritable: WritableStream<Uint8Array>;
+  readonly resolveDelivery: (
+    delivery: DeliverHookPayload,
+  ) => Promise<DeliverHookPayload | undefined>;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
 }): Promise<NextDriverAction> {
   const control = new TurnControlReceiver({
     bufferedDeliveries: input.bufferedDeliveries,
     deliveryHook: input.deliveryHook,
+    resolveDelivery: input.resolveDelivery,
     token: input.controlToken,
   });
 

@@ -40,8 +40,12 @@ import {
   startRemoteAgentSession,
 } from "#execution/remote-agent-dispatch.js";
 import { hydrateDurableSession } from "#execution/session.js";
-import { buildSubagentRunInput, type SubagentInputSource } from "#execution/subagent-tool.js";
-import { createWorkflowRuntime, workflowEntryReference } from "#execution/workflow-runtime.js";
+import {
+  buildSubagentRunInput,
+  isBackgroundSubagentCall,
+  type SubagentInputSource,
+} from "#execution/subagent-tool.js";
+import { prepareWorkflowRunStart, workflowEntryReference } from "#execution/workflow-runtime.js";
 import { createLogger, logError } from "#internal/logging.js";
 import { toErrorMessage } from "#shared/errors.js";
 import {
@@ -51,6 +55,11 @@ import {
   resolveSubagentDelegationLimit,
   type SubagentDelegationLimit,
 } from "#harness/subagent-depth.js";
+import {
+  recordFailedSubagentSpawn,
+  reserveSubagentSpawn,
+} from "#features/subagent-supervision/messages.js";
+import { startCoordinatedSubagent } from "#features/subagent-supervision/coordinated-spawn.js";
 
 const log = createLogger("execution.dispatch-runtime-actions");
 
@@ -115,6 +124,15 @@ export async function dispatchRuntimeActionsStep(input: {
         continue;
       }
 
+      if (action.kind === "subagent-call") {
+        try {
+          await reserveSubagentSpawn(session.sessionId, action.callId);
+        } catch (error) {
+          results.push(createSubagentFencedResult({ action, error }));
+          continue;
+        }
+      }
+
       let childSessionId: string;
       let name: string;
       let remote: { readonly url: string } | undefined;
@@ -122,15 +140,12 @@ export async function dispatchRuntimeActionsStep(input: {
 
       switch (action.kind) {
         case "subagent-call": {
+          const background = isBackgroundSubagentCall(action);
           const registered = bundle.subagentRegistry.subagentsByNodeId.get(action.nodeId);
           const source: SubagentInputSource =
             registered?.definition.kind === "subagent"
               ? { description: registered.definition.description, type: "local" }
               : { type: "runtime" };
-          const childRuntime = createWorkflowRuntime({
-            compiledArtifactsSource: bundle.compiledArtifactsSource,
-            nodeId: action.nodeId,
-          });
           const { childContinuationToken, runInput } = buildSubagentRunInput({
             action,
             auth,
@@ -143,14 +158,47 @@ export async function dispatchRuntimeActionsStep(input: {
             session,
             source,
           });
-          const handle = await childRuntime.run(runInput);
+          let startedChildSessionId: string;
+          try {
+            const prepared = await prepareWorkflowRunStart(
+              {
+                compiledArtifactsSource: bundle.compiledArtifactsSource,
+                nodeId: action.nodeId,
+              },
+              runInput,
+            );
+            startedChildSessionId = await startCoordinatedSubagent({
+              callId: action.callId,
+              parentSessionId: session.sessionId,
+              prepared,
+            });
+          } catch (error) {
+            await recordFailedSubagentSpawn(session.sessionId, action.callId);
+            logError(log, "subagent start failed", error, {
+              callId: action.callId,
+              nodeId: action.nodeId,
+              subagentName: action.subagentName,
+            });
+            results.push(createSubagentStartFailureResult({ action, error }));
+            continue;
+          }
 
-          nextSession = recordPendingSubagentChildToken({
-            callId: action.callId,
-            childContinuationToken,
-            session: nextSession,
-          });
-          childSessionId = handle.sessionId;
+          if (background) {
+            results.push({
+              background: true,
+              callId: action.callId,
+              kind: "subagent-result",
+              output: { childSessionId: startedChildSessionId, status: "running" },
+              subagentName: action.subagentName,
+            });
+          } else {
+            nextSession = recordPendingSubagentChildToken({
+              callId: action.callId,
+              childContinuationToken,
+              session: nextSession,
+            });
+          }
+          childSessionId = startedChildSessionId;
           name = action.name;
           toolName = action.subagentName;
           break;
@@ -215,6 +263,38 @@ export async function dispatchRuntimeActionsStep(input: {
       : createDurableSessionState({ session: nextSession });
 
   return { results, sessionState: nextState };
+}
+
+function createSubagentFencedResult(input: {
+  readonly action: DelegatedRuntimeActionRequest;
+  readonly error: unknown;
+}): RuntimeSubagentResultActionResult {
+  return {
+    callId: input.action.callId,
+    isError: true,
+    kind: "subagent-result",
+    output: {
+      code: "SUBAGENT_SESSION_FENCED",
+      message: toErrorMessage(input.error),
+    },
+    subagentName: getSubagentDelegationName(input.action),
+  };
+}
+
+function createSubagentStartFailureResult(input: {
+  readonly action: Extract<DelegatedRuntimeActionRequest, { readonly kind: "subagent-call" }>;
+  readonly error: unknown;
+}): RuntimeSubagentResultActionResult {
+  return {
+    callId: input.action.callId,
+    isError: true,
+    kind: "subagent-result",
+    output: {
+      code: "SUBAGENT_START_FAILED",
+      message: toErrorMessage(input.error),
+    },
+    subagentName: input.action.subagentName,
+  };
 }
 
 function createRemoteAgentStartFailureResult(input: {

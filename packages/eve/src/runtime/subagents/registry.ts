@@ -24,19 +24,38 @@ export interface RuntimeSubagentRegistry {
  * Stable JSON Schema lowered onto every subagent tool. Subagents always
  * accept one free-form `message` string from the parent agent.
  */
+const MESSAGE_PROPERTY = Object.freeze({
+  type: "string",
+  description:
+    "The message to send to the subagent. Provide all context the subagent needs to complete the task; the subagent does not see the parent's history.",
+});
+const OUTPUT_SCHEMA_PROPERTY = Object.freeze({
+  type: "object",
+  description:
+    "When provided, the subagent runs in task mode and must produce structured output matching this JSON Schema. The structured output becomes the tool result.",
+});
+
 export const SUBAGENT_TOOL_INPUT_SCHEMA: JsonObject = Object.freeze({
   type: "object",
   properties: Object.freeze({
-    message: Object.freeze({
+    message: MESSAGE_PROPERTY,
+    outputSchema: OUTPUT_SCHEMA_PROPERTY,
+    mode: Object.freeze({
       type: "string",
+      enum: Object.freeze(["foreground", "background"]),
       description:
-        "The message to send to the subagent. Provide all context the subagent needs to complete the task; the subagent does not see the parent's history.",
+        'Use "background" when you need to inspect, message, wait for, or stop the child while it runs. The default is "foreground", which returns the completed child result.',
     }),
-    outputSchema: Object.freeze({
-      type: "object",
-      description:
-        "When provided, the subagent runs in task mode and must produce structured output matching this JSON Schema. The structured output becomes the tool result.",
-    }),
+  }),
+  required: Object.freeze(["message"]),
+  additionalProperties: false,
+}) as JsonObject;
+
+const REMOTE_AGENT_TOOL_INPUT_SCHEMA: JsonObject = Object.freeze({
+  type: "object",
+  properties: Object.freeze({
+    message: MESSAGE_PROPERTY,
+    outputSchema: OUTPUT_SCHEMA_PROPERTY,
   }),
   required: Object.freeze(["message"]),
   additionalProperties: false,
@@ -99,7 +118,8 @@ function createPreparedRuntimeSubagentTool(
 ): PreparedRuntimeDelegationTool {
   return {
     description: definition.description,
-    inputSchema: SUBAGENT_TOOL_INPUT_SCHEMA,
+    inputSchema:
+      definition.kind === "remote" ? REMOTE_AGENT_TOOL_INPUT_SCHEMA : SUBAGENT_TOOL_INPUT_SCHEMA,
     kind: definition.kind,
     logicalPath: definition.logicalPath,
     name: definition.name,

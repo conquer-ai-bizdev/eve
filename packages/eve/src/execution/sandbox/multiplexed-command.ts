@@ -4,7 +4,7 @@ type OutputName = "stderr" | "stdout";
 
 interface MultiplexedCommand<Log extends { readonly data: string }> {
   kill(): PromiseLike<void>;
-  logs(): AsyncIterable<Log>;
+  logs(): AsyncIterable<Log> & { close?(): void };
   wait(): PromiseLike<{ readonly exitCode: number }>;
 }
 
@@ -54,6 +54,7 @@ function createOutputChannel(): OutputChannel {
 export function adaptMultiplexedCommandToSandboxProcess<
   Log extends { readonly data: string },
 >(input: {
+  readonly abortSignal?: AbortSignal;
   readonly command: MultiplexedCommand<Log>;
   readonly getOutput: (log: Log) => OutputName;
 }): SandboxProcess {
@@ -62,9 +63,10 @@ export function adaptMultiplexedCommandToSandboxProcess<
   const stderr = createOutputChannel();
   const outputs: Record<OutputName, OutputChannel> = { stderr, stdout };
 
+  const commandLogs = input.command.logs();
   const logsDone = (async () => {
     try {
-      for await (const log of input.command.logs()) {
+      for await (const log of commandLogs) {
         outputs[input.getOutput(log)].enqueue(encoder.encode(log.data));
       }
       stdout.close();
@@ -80,19 +82,40 @@ export function adaptMultiplexedCommandToSandboxProcess<
 
   let waitPromise: Promise<{ exitCode: number }> | undefined;
   let killPromise: Promise<void> | undefined;
+  const abortResult = Promise.withResolvers<never>();
+  void abortResult.promise.catch(() => undefined);
+  const kill = (): Promise<void> =>
+    (killPromise ??= Promise.resolve().then(() => input.command.kill()));
+  const onAbort = () => {
+    void kill().then(
+      () => {
+        commandLogs.close?.();
+        abortResult.reject(input.abortSignal?.reason ?? new Error("Sandbox command aborted"));
+      },
+      (error) => abortResult.reject(error),
+    );
+  };
+  if (input.abortSignal?.aborted === true) {
+    onAbort();
+  } else {
+    input.abortSignal?.addEventListener("abort", onAbort, { once: true });
+  }
 
   return {
     stderr: stderr.stream,
     stdout: stdout.stream,
     wait() {
-      return (waitPromise ??= Promise.resolve().then(async () => {
-        const finished = await input.command.wait();
-        await logsDone;
-        return { exitCode: finished.exitCode };
-      }));
+      return (waitPromise ??= Promise.race([
+        Promise.resolve().then(async () => {
+          const finished = await input.command.wait();
+          await logsDone;
+          return { exitCode: finished.exitCode };
+        }),
+        abortResult.promise,
+      ]));
     },
     kill() {
-      return (killPromise ??= Promise.resolve().then(() => input.command.kill()));
+      return kill();
     },
   };
 }

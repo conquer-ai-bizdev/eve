@@ -264,6 +264,102 @@ describe("loadAuthoredModuleNamespace", () => {
     }
   });
 
+  it("preserves lazy transitive imports from symlinked workspace packages", async () => {
+    const app = await scenarioApp({
+      files: {
+        "agent/tools/read_dynamic.ts": [
+          'import { readDynamicValue } from "@repo/dynamic-provider";',
+          "",
+          "export { readDynamicValue };",
+          "",
+        ].join("\n"),
+      },
+      name: "workspace-transitive-dynamic-import",
+    });
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "eve-workspace-dynamic-import-"));
+    const counterKey = "__eveWorkspaceDynamicImportCount__";
+    const globals = globalThis as Record<string, unknown>;
+
+    try {
+      const packageRoot = join(workspaceRoot, "packages", "dynamic-provider");
+      const transitiveRoot = join(packageRoot, "node_modules", "transitive-dynamic-provider");
+      await mkdir(join(packageRoot, "src"), { recursive: true });
+      await mkdir(transitiveRoot, { recursive: true });
+      await writeFile(
+        join(packageRoot, "package.json"),
+        JSON.stringify(
+          {
+            exports: "./src/index.ts",
+            name: "@repo/dynamic-provider",
+            type: "module",
+          },
+          null,
+          2,
+        ),
+      );
+      await writeFile(
+        join(packageRoot, "src", "index.ts"),
+        [
+          'import { readDynamicValue } from "transitive-dynamic-provider";',
+          "",
+          "export { readDynamicValue };",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(
+        join(transitiveRoot, "package.json"),
+        JSON.stringify(
+          {
+            exports: "./index.js",
+            name: "transitive-dynamic-provider",
+            type: "module",
+          },
+          null,
+          2,
+        ),
+      );
+      await writeFile(
+        join(transitiveRoot, "index.js"),
+        [
+          "export async function readDynamicValue() {",
+          '  return (await import("./value.js")).value;',
+          "}",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(
+        join(transitiveRoot, "value.js"),
+        [
+          `globalThis.${counterKey} = (globalThis.${counterKey} ?? 0) + 1;`,
+          'export const value = "inlined";',
+          "",
+        ].join("\n"),
+      );
+
+      await mkdir(join(app.appRoot, "node_modules", "@repo"), { recursive: true });
+      await symlink(
+        packageRoot,
+        join(app.appRoot, "node_modules", "@repo", "dynamic-provider"),
+        "junction",
+      );
+
+      const moduleNamespace = await loadAuthoredModuleNamespace(
+        join(app.appRoot, "agent", "tools", "read_dynamic.ts"),
+      );
+      const readDynamicValue = moduleNamespace.readDynamicValue;
+
+      expect(globals[counterKey]).toBeUndefined();
+      expect(readDynamicValue).toBeTypeOf("function");
+      if (typeof readDynamicValue !== "function") throw new Error("Expected dynamic reader");
+      await expect(readDynamicValue()).resolves.toBe("inlined");
+      await expect(readDynamicValue()).resolves.toBe("inlined");
+      expect(globals[counterKey]).toBe(1);
+    } finally {
+      delete globals[counterKey];
+      await rm(workspaceRoot, { force: true, recursive: true });
+    }
+  });
+
   it("does not collide with authored modules that already declare __dirname", async () => {
     // Regression: the Node ESM compatibility banner used to unconditionally
     // prepend `const __dirname = ...` / `const __filename = ...` /

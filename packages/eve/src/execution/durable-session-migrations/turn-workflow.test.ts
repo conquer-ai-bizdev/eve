@@ -53,6 +53,7 @@ describe("turn workflow wire migrations", () => {
       driverCapabilities: { turnInbox: true },
       mode: "conversation",
       stepInput: {
+        controlTurnId: "turn-token",
         input: delivery,
         parentWritable,
         serializedContext: { state: "driver" },

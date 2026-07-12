@@ -68,6 +68,7 @@ export function createToolExecuteWithAuth(input: {
           justAuthorizedScopes,
           options,
           scope,
+          toolInput,
         }),
       );
     } catch (err) {
@@ -85,9 +86,10 @@ function buildToolContext(input: {
   readonly scope: string;
   readonly justAuthorizedScopes: Set<string>;
   readonly inlineAuthState: InlineAuthState;
+  readonly toolInput: unknown;
 }): ToolContext {
-  const { scope, justAuthorizedScopes, inlineAuthState } = input;
-  const base = buildBaseToolContext(input.options);
+  const { scope, justAuthorizedScopes, inlineAuthState, toolInput } = input;
+  const base = buildBaseToolContext(input.options, { input: toolInput, name: scope });
   return {
     ...base,
     async getToken(provider?: ToolAuthProvider, options?: ToolAuthOptions): Promise<TokenResult> {

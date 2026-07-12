@@ -46,6 +46,7 @@ describe("dispatchAndAwaitTurn", () => {
       deliveryHook,
       mode: "conversation",
       parentWritable: new WritableStream<Uint8Array>(),
+      resolveDelivery: async (delivery) => delivery,
       serializedContext: {},
       sessionState: createState("slack:C1:"),
     });
@@ -79,6 +80,7 @@ describe("dispatchAndAwaitTurn", () => {
       deliveryHook,
       mode: "conversation",
       parentWritable: new WritableStream<Uint8Array>(),
+      resolveDelivery: async (delivery) => delivery,
       serializedContext: {},
       sessionState: createState("slack:C1:"),
     });
@@ -140,6 +142,7 @@ describe("dispatchAndAwaitTurn", () => {
       }),
       mode: "conversation",
       parentWritable: new WritableStream<Uint8Array>(),
+      resolveDelivery: async (delivery) => delivery,
       serializedContext: {},
       sessionState: state,
     });
@@ -177,6 +180,7 @@ describe("dispatchAndAwaitTurn", () => {
       deliveryHook: createDeliveryHook(),
       mode: "conversation",
       parentWritable: new WritableStream<Uint8Array>(),
+      resolveDelivery: async (delivery) => delivery,
       serializedContext: {},
       sessionState: state,
     });

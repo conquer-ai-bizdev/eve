@@ -7906,6 +7906,13 @@ describe("createToolLoopHarness", () => {
       setupMockAgent({
         finishReason: "stop",
         providerMetadata: {
+          "eve-codex-model": {
+            adapterRevision: `sha256:${"a".repeat(64)}`,
+            adapterVersion: "0.1.0",
+            credentialStoreType: "vercel-blob",
+            schemaVersion: 1,
+            token: "must-not-survive",
+          },
           gateway: {
             cost: "0.0123",
             generationId: "gen_test_gateway",
@@ -7939,6 +7946,12 @@ describe("createToolLoopHarness", () => {
         cacheWriteTokens: 200,
       });
       expect(stepCompleted?.data.providerMetadata).toEqual({
+        "eve-codex-model": {
+          adapterRevision: `sha256:${"a".repeat(64)}`,
+          adapterVersion: "0.1.0",
+          credentialStoreType: "vercel-blob",
+          schemaVersion: 1,
+        },
         gateway: { generationId: "gen_test_gateway" },
       });
     });

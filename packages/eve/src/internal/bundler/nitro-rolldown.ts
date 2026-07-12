@@ -105,7 +105,9 @@ export function getSingleRolldownChunk(
   const chunk = chunks[0];
 
   if (chunk === undefined || chunks.length !== 1) {
-    throw new Error(`Expected one bundled ${description}.`);
+    throw new Error(
+      `Expected one bundled ${description}; received ${chunks.length}: ${chunks.map((item) => item.fileName).join(", ")}.`,
+    );
   }
 
   return chunk;

@@ -35,6 +35,7 @@ describe("TurnExecutionCursor", () => {
       },
     });
     expect(cursor.createStepInput(undefined)).toEqual({
+      controlTurnId: "turn-control",
       input: undefined,
       parentWritable,
       serializedContext: { revision: 2 },

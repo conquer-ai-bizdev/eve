@@ -19,6 +19,22 @@ export {
 } from "#public/definitions/tool.js";
 export type { Approval, ApprovalContext, ApprovalStatus } from "#public/definitions/approval.js";
 export type {
+  ChildCancelResult,
+  ChildCancelSessionResult,
+  ChildCursor,
+  ChildDeliveryReceipt,
+  ChildError,
+  ChildEventType,
+  ChildLifecycleStatus,
+  ChildSessionEvent,
+  ChildSessionStreamEvent,
+  ChildSessionHandle,
+  ChildSnapshot,
+  ChildWaitResult,
+  SubagentController,
+} from "#public/definitions/subagent-control.js";
+export { SUBAGENT_SUPERVISION_CAPABILITY } from "#features/subagent-supervision/capability.js";
+export type {
   DynamicToolEntry,
   DynamicEvents,
   DynamicToolEvents,

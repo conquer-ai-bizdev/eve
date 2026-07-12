@@ -150,7 +150,7 @@ describe("runStep with sessionProvider", () => {
 
   it("derives stable turn metadata from harness emission state", async () => {
     const ctx = createSeedContext();
-    const turns: Array<{ id: string; sequence: number }> = [];
+    const turns: Array<{ id: string; modelStepIndex?: number; sequence: number }> = [];
 
     const stepInTurn = async (session: HarnessSession) => {
       await runStep(ctx, session, async () => {
@@ -191,9 +191,9 @@ describe("runStep with sessionProvider", () => {
     );
 
     expect(turns).toEqual([
-      { id: "turn_2", sequence: 2 },
-      { id: "turn_2", sequence: 2 },
-      { id: "turn_3", sequence: 3 },
+      { id: "turn_2", modelStepIndex: 0, sequence: 2 },
+      { id: "turn_2", modelStepIndex: 1, sequence: 2 },
+      { id: "turn_3", modelStepIndex: 0, sequence: 3 },
     ]);
   });
 });

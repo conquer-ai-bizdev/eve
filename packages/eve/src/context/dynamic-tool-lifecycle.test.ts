@@ -7,7 +7,7 @@ import { defineTool } from "#public/definitions/tool.js";
 
 vi.mock("#context/build-callback-context.js", () => ({
   buildCallbackContext: () => ({
-    session: { id: "test", auth: { current: null, initiator: null }, turn: {} },
+    session: { id: "test", auth: { current: null, initiator: null }, turn: { id: "turn-test" } },
   }),
 }));
 
@@ -766,6 +766,41 @@ function createFrameworkTool(
 }
 
 describe("framework dynamic tools (no bundler transform)", () => {
+  it("keeps operation identity stable when a dynamic tool call is replayed", async () => {
+    const ctx = createCtx();
+    const operationIds: string[] = [];
+    const resolver = createResolver("observe", ["session.started"], () => ({
+      identity: defineTool({
+        description: "observe operation identity",
+        inputSchema: { type: "object" },
+        execute: async (_input, toolContext): Promise<void> => {
+          operationIds.push(toolContext.operationId);
+        },
+      }),
+    }));
+
+    await dispatchDynamicToolEvent({
+      ctx,
+      resolvers: [resolver],
+      messages: [],
+      event: makeEvent("session.started"),
+    });
+    ctx.clearVirtualContext();
+    const [tool] = buildDynamicTools(ctx);
+
+    await tool!.execute!({ nested: { b: 2, a: 1 } }, {
+      messages: [],
+      toolCallId: "call-first",
+    });
+    await tool!.execute!({ nested: { a: 1, b: 2 } }, {
+      messages: [],
+      toolCallId: "call-replay",
+    });
+
+    expect(operationIds).toHaveLength(2);
+    expect(operationIds[0]).toBe(operationIds[1]);
+  });
+
   it("session-scoped framework tool is replayable across steps", async () => {
     const ctx = createCtx();
     const executeFn = vi.fn(() => ({ data: "from-framework" }));

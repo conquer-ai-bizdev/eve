@@ -24,7 +24,7 @@ export const sessionProvider: FrameworkContextProvider<Session> = {
         },
         parent: ctx.get(ParentSessionKey),
         sessionId: ctx.require(SessionIdKey),
-        turn: { id: turnId, sequence: emission.sequence },
+        turn: { id: turnId, modelStepIndex: emission.stepIndex, sequence: emission.sequence },
       }),
     };
   },

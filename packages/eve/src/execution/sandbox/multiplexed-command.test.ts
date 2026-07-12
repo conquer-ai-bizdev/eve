@@ -133,4 +133,51 @@ describe("adaptMultiplexedCommandToSandboxProcess", () => {
     await process.kill();
     expect(command.kill).toHaveBeenCalledOnce();
   });
+
+  it("kills a detached command when its abort signal fires", async () => {
+    const abortController = new AbortController();
+    const command = {
+      kill: vi.fn(async () => undefined),
+      logs: logs(),
+      wait: vi.fn(async () => ({ exitCode: 0 })),
+    };
+    adaptMultiplexedCommandToSandboxProcess({
+      abortSignal: abortController.signal,
+      command,
+      getOutput: (log) => log.output,
+    });
+
+    abortController.abort();
+    await vi.waitFor(() => expect(command.kill).toHaveBeenCalledOnce());
+  });
+
+  it("does not finish an aborted wait before command termination is acknowledged", async () => {
+    const abortController = new AbortController();
+    const terminated = Promise.withResolvers<void>();
+    const commandFinished = Promise.withResolvers<{ exitCode: number }>();
+    const command = {
+      kill: vi.fn(() => terminated.promise),
+      logs: logs(),
+      wait: vi.fn(() => commandFinished.promise),
+    };
+    const process = adaptMultiplexedCommandToSandboxProcess({
+      abortSignal: abortController.signal,
+      command,
+      getOutput: (log) => log.output,
+    });
+
+    abortController.abort();
+    let settled = false;
+    const waiting = Promise.resolve(process.wait()).then((result) => {
+      settled = true;
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(command.kill).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+
+    terminated.resolve();
+    await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

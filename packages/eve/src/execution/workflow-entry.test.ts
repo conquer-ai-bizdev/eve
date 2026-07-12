@@ -8,6 +8,8 @@ import { createSessionStep } from "#execution/create-session-step.js";
 import { notifyDelegatedParentStep } from "#execution/delegated-parent-notification.js";
 import type { DurableSessionState } from "#execution/durable-session-store.js";
 import { fireSessionCallbackStep } from "#execution/session-callback-step.js";
+import { fenceSubagentControlMailboxStep } from "#features/subagent-supervision/fence-mailbox-step.js";
+import { readSubagentControlMessagesStep } from "#features/subagent-supervision/read-messages-step.js";
 import type { TurnControlPayload } from "#execution/turn-control-protocol.js";
 import { workflowEntry } from "#execution/workflow-entry.js";
 import { routeDeliverToChildren } from "#execution/route-child-delivery.js";
@@ -44,6 +46,18 @@ vi.mock("./create-session-step.js", () => ({
 
 vi.mock("./route-child-delivery.js", () => ({
   routeDeliverToChildren: vi.fn().mockImplementation(async ({ payloads }) => payloads[0]),
+}));
+
+vi.mock("#features/subagent-supervision/fence-mailbox-step.js", () => ({
+  fenceSubagentControlMailboxStep: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("#features/subagent-supervision/read-messages-step.js", () => ({
+  readSubagentControlMessagesStep: vi.fn().mockResolvedValue({
+    fenced: false,
+    messages: [],
+    nextCursor: 0,
+  }),
 }));
 
 vi.mock("./delegated-parent-notification.js", () => ({
@@ -91,6 +105,11 @@ describe("workflowEntry", () => {
   beforeEach(() => {
     vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "");
     vi.stubEnv("VERCEL_ENV", "");
+    vi.mocked(readSubagentControlMessagesStep).mockResolvedValue({
+      fenced: false,
+      messages: [],
+      nextCursor: 0,
+    });
   });
 
   afterEach(() => {
@@ -491,6 +510,48 @@ describe("workflowEntry", () => {
 
     expect(result).toEqual({ output: "ok" });
     expect(routeDeliverToChildren).not.toHaveBeenCalled();
+  });
+
+  it("runs an accepted control message before finalizing a completed turn", async () => {
+    const sessionState = createBaseSessionState();
+    vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
+    vi.mocked(readSubagentControlMessagesStep)
+      .mockResolvedValueOnce({
+        fenced: false,
+        messages: [
+          {
+            idempotencyKey: "correction-1",
+            message: "read the corrected path",
+            messageId: "msg-correction-1",
+            sequence: 0,
+          },
+        ],
+        nextCursor: 1,
+      })
+      .mockResolvedValue({ fenced: true, messages: [], nextCursor: 2 });
+    installHookMocks({
+      turnControls: [
+        turnResult({ action: "done", output: "stale result", sessionState }),
+        turnResult({ action: "done", output: "corrected result", sessionState }),
+      ],
+    });
+
+    const result = await workflowEntry({
+      input: { message: "initial task" },
+      serializedContext: createSerializedContext(),
+    });
+
+    expect(result).toEqual({ output: "corrected result" });
+    expect(dispatchTurnStep).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(dispatchTurnStep).mock.calls[1]?.[0].delivery).toEqual({
+      auth: undefined,
+      kind: "deliver",
+      payloads: [{ message: "read the corrected path" }],
+      requestId: undefined,
+    });
+    expect(fenceSubagentControlMailboxStep).toHaveBeenCalledWith("wrun_test_123", "completed");
+    expect(fireSessionCallbackStep).toHaveBeenCalledOnce();
+    expect(notifyDelegatedParentStep).toHaveBeenCalledOnce();
   });
 
   it("parks the first hook under the re-keyed continuation token", async () => {

@@ -113,6 +113,24 @@ describe("tool-hosted authorization", () => {
     expect(result).toEqual({ callId: "call_test" });
   });
 
+  it("keeps the authored operation id stable across provider call id replay", async () => {
+    const tool = authoredTool({
+      name: "observe_operation_id",
+      execute(_input, ctx) {
+        return { operationId: ctx.operationId };
+      },
+    });
+    const runtime = createTestRuntime({ tools: [tool] });
+
+    const [first, replay] = await runtime.runAsSession(undefined, async () => [
+      await tool.execute!({ nested: { b: 2, a: 1 } }, { messages: [], toolCallId: "call_first" }),
+      await tool.execute!({ nested: { a: 1, b: 2 } }, { messages: [], toolCallId: "call_replay" }),
+    ]);
+
+    expect(first).toEqual(replay);
+    expect(first).toMatchObject({ operationId: expect.stringMatching(/^[^:]+:[a-f0-9]{24}$/) });
+  });
+
   it("resolves and caches an inline provider on a plain tool", async () => {
     let calls = 0;
     const inlineAuth: AuthorizationDefinition = {

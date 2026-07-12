@@ -68,6 +68,7 @@ export class TurnExecutionCursor {
   /** Builds the next atomic turn-step input from the cursor's current state. */
   createStepInput(input: HookPayload | undefined): TurnStepInput {
     return {
+      controlTurnId: this.controlToken,
       input,
       parentWritable: this.parentWritable,
       serializedContext: this.currentSerializedContext,

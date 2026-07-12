@@ -40,6 +40,31 @@ function buildRuntimeSubagentRunInput(
 }
 
 describe("buildSubagentRunInput", () => {
+  it("keeps foreground children as one-shot task runs", () => {
+    const { runInput } = buildRuntimeSubagentRunInput({
+      action: makeAction(),
+      auth: null,
+      batchEvent: { sequence: 0, turnId: "turn-0" },
+      initiatorAuth: null,
+      session: makeSession(),
+    });
+
+    expect(runInput.mode).toBe("task");
+  });
+
+  it("keeps background children open for later conversation turns", () => {
+    const { runInput } = buildRuntimeSubagentRunInput({
+      action: { ...makeAction(), input: { message: "Start work.", mode: "background" } },
+      auth: null,
+      batchEvent: { sequence: 0, turnId: "turn-0" },
+      initiatorAuth: null,
+      session: makeSession(),
+    });
+
+    expect(runInput.adapter.state).toMatchObject({ background: true });
+    expect(runInput.mode).toBe("conversation");
+  });
+
   it("forwards parent capabilities to the child run input", () => {
     const { runInput } = buildRuntimeSubagentRunInput({
       action: makeAction(),

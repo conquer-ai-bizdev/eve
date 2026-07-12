@@ -500,6 +500,7 @@ function createVercelInternalSandboxSession(
         signal: options.abortSignal,
       });
       return adaptMultiplexedCommandToSandboxProcess({
+        abortSignal: options.abortSignal,
         command,
         getOutput: (log) => log.stream,
       });

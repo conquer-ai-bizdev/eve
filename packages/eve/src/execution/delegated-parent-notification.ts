@@ -38,6 +38,10 @@ export async function notifyDelegatedParentStep(input: {
     return;
   }
 
+  if (adapter.state?.background === true) {
+    return;
+  }
+
   const parentContinuationToken = String(adapter.state?.parentContinuationToken ?? "");
   if (parentContinuationToken === "") {
     return;

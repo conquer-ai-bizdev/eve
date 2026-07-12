@@ -37,6 +37,18 @@ describe("executeBashOnSandbox", () => {
     expect(log).toHaveBeenCalledWith("eve: starting sandbox command: ls -la /workspace");
     expect(log).toHaveBeenCalledWith("eve: sandbox command finished (exit 0): ls -la /workspace");
   });
+
+  it("reports the original size of a truncated stream", async () => {
+    const stdout = "x".repeat(10_000);
+    const sandbox = createTestSandboxSession({ exitCode: 0, stderr: "", stdout });
+
+    const result = await executeBashOnSandbox(sandbox, { command: "large-output" });
+
+    expect(result).toMatchObject({
+      truncated: true,
+      truncation: { stdout: { totalChars: stdout.length } },
+    });
+  });
 });
 
 function createTestSandboxSession(result: SandboxCommandResult): SandboxSession {

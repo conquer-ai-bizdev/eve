@@ -5,6 +5,7 @@ import type { PublicToolDefinition, ToolModelOutput } from "#shared/tool-definit
 import type { SessionContext } from "#public/definitions/callback-context.js";
 import type { Approval } from "#public/definitions/approval.js";
 import type { JsonObject } from "#shared/json.js";
+import type { SubagentController } from "#public/definitions/subagent-control.js";
 import type {
   AuthorizationDefinition,
   ConnectionAuthorizationContext,
@@ -87,6 +88,10 @@ export type ToolContext = SessionContext & {
    * stream events and its {@link ApprovalContext}.
    */
   readonly callId: string;
+  /** Stable identity for this logical tool invocation across Workflow retries. */
+  readonly operationId: string;
+  /** Controls native descendant subagents of the active session. */
+  readonly subagents: SubagentController;
   /**
    * Resolves the bearer token for an inline provider. This accepts the same
    * auth shapes as a connection's `auth` field, including `connect("...")`

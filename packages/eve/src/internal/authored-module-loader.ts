@@ -235,6 +235,7 @@ export async function bundleAuthoredModuleCode(
       tsconfig: tsconfigPath,
       write: false,
       output: {
+        codeSplitting: false,
         comments: false,
         format: "esm",
         sourcemap: "inline",

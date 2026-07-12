@@ -244,7 +244,11 @@ export async function resolvePendingRuntimeActions(input: {
 
   if (input.emit !== undefined) {
     for (const result of readyResults) {
-      if (result.kind === "subagent-result" && result.isError !== true) {
+      if (
+        result.kind === "subagent-result" &&
+        result.isError !== true &&
+        result.background !== true
+      ) {
         await input.emit({
           data: {
             callId: result.callId,

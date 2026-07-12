@@ -102,6 +102,7 @@ function runReceiver(
   const receiver = new TurnControlReceiver({
     bufferedDeliveries,
     deliveryHook: createDeliveryHook(),
+    resolveDelivery: async (delivery) => delivery,
     token: "turn-control",
   });
   return receiver.waitForAction().finally(() => receiver.dispose());

@@ -28,6 +28,10 @@ export interface BashResult {
   readonly stdout: string;
   /** True when stdout or stderr was shortened to fit within output limits. */
   readonly truncated: boolean;
+  readonly truncation?: {
+    readonly stderr?: { readonly totalChars: number };
+    readonly stdout?: { readonly totalChars: number };
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +79,18 @@ export async function executeBashOnSandbox(
     stderr,
     stdout,
     truncated,
+    ...(truncated
+      ? {
+          truncation: {
+            ...(stderrResult.truncated
+              ? { stderr: { totalChars: stderrResult.totalChars } }
+              : {}),
+            ...(stdoutResult.truncated
+              ? { stdout: { totalChars: stdoutResult.totalChars } }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 

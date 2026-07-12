@@ -1018,6 +1018,9 @@ importers:
       '@nuxt/kit':
         specifier: ^4.0.0
         version: 4.4.6(magicast@0.5.3)
+      '@nuxt/schema':
+        specifier: 4.4.6
+        version: 4.4.6
       '@standard-schema/spec':
         specifier: 1.1.0
         version: 1.1.0

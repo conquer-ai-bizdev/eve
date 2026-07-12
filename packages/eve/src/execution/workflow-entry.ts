@@ -30,6 +30,13 @@ import {
   type SessionDeliveryHook,
 } from "#execution/session-delivery-hook.js";
 import { readSerializedSubagentDepth } from "#harness/subagent-depth.js";
+import { closeSessionStreamStep } from "#execution/close-session-stream-step.js";
+import { fenceSubagentControlMailboxStep } from "#features/subagent-supervision/fence-mailbox-step.js";
+import {
+  createSubagentControlDeliveryState,
+  resolveBufferedSubagentControlDeliveries,
+  resolveSubagentControlDelivery,
+} from "#features/subagent-supervision/turn-delivery.js";
 
 // workflow-entry.ts is the durable workflow body — the bundler rejects
 // node built-ins here, so `internal/logging.ts` cannot be imported.
@@ -166,6 +173,15 @@ async function runDriverLoop(input: {
 
   const bufferedDeliveries: DeliverHookPayload[] = [];
   const deliveryHook = createSessionDeliveryHook(bufferedDeliveries);
+  const controlState = createSubagentControlDeliveryState();
+  const resolveDelivery = async (
+    delivery: DeliverHookPayload,
+  ): Promise<DeliverHookPayload | undefined> =>
+    await resolveSubagentControlDelivery({
+      childSessionId: input.sessionState.sessionId,
+      controlState,
+      delivery,
+    });
 
   try {
     if (input.sessionState.continuationToken) {
@@ -180,12 +196,57 @@ async function runDriverLoop(input: {
       deliveryHook,
       mode: input.mode,
       parentWritable: input.driverWritable,
+      resolveDelivery,
       serializedContext: input.serializedContext,
       sessionState: input.sessionState,
     });
 
     while (true) {
       if (action.kind === "done") {
+        let nextDeliver = await resolveBufferedSubagentControlDeliveries({
+          bufferedDeliveries,
+          childSessionId: input.sessionState.sessionId,
+          controlState,
+        });
+        if (nextDeliver === undefined) {
+          await fenceSubagentControlMailboxStep(input.sessionState.sessionId, "completed");
+          nextDeliver = await resolveBufferedSubagentControlDeliveries({
+            bufferedDeliveries,
+            childSessionId: input.sessionState.sessionId,
+            controlState,
+          });
+        }
+        if (nextDeliver !== undefined) {
+          await deliveryHook.rekey(action.sessionState.continuationToken);
+          const remainder = await routeDeliverToChildren({
+            auth: nextDeliver.auth,
+            parentWritable: input.driverWritable,
+            payloads: nextDeliver.payloads,
+            sessionState: action.sessionState,
+          });
+
+          if (remainder === undefined) continue;
+
+          action = await dispatchAndAwaitTurn({
+            bufferedDeliveries,
+            capabilities: input.capabilities,
+            controlToken: nextTurnControlToken(),
+            delivery: {
+              auth: nextDeliver.auth,
+              kind: "deliver",
+              payloads: [remainder],
+              requestId: nextDeliver.requestId,
+            },
+            deliveryHook,
+            mode: input.mode,
+            parentWritable: input.driverWritable,
+            resolveDelivery,
+            serializedContext: action.serializedContext,
+            sessionState: action.sessionState,
+          });
+          continue;
+        }
+
         return await finalizeDone({
           action,
           driverWritable: input.driverWritable,
@@ -212,6 +273,27 @@ async function runDriverLoop(input: {
       // delivery — covers both the first turn's anchor and any later rekey.
       await deliveryHook.rekey(action.sessionState.continuationToken);
 
+      const queued = await resolveBufferedSubagentControlDeliveries({
+        bufferedDeliveries,
+        childSessionId: input.sessionState.sessionId,
+        controlState,
+      });
+      if (queued !== undefined) {
+        action = await dispatchAndAwaitTurn({
+          bufferedDeliveries,
+          capabilities: input.capabilities,
+          controlToken: nextTurnControlToken(),
+          delivery: queued,
+          deliveryHook,
+          mode: input.mode,
+          parentWritable: input.driverWritable,
+          resolveDelivery,
+          serializedContext: action.serializedContext,
+          sessionState: action.sessionState,
+        });
+        continue;
+      }
+
       if (action.authorizationNames && action.authorizationNames.length > 0) {
         const expected = action.authorizationNames.length;
         const allPayloads: DeliverPayload[] = [];
@@ -235,20 +317,24 @@ async function runDriverLoop(input: {
           deliveryHook,
           mode: input.mode,
           parentWritable: input.driverWritable,
+          resolveDelivery,
           serializedContext: action.serializedContext,
           sessionState: action.sessionState,
         });
         continue;
       }
 
-      const nextDeliver = await waitForNextDeliver({
+      const rawNextDeliver = await waitForNextDeliver({
         bufferedDeliveries,
         deliveryHook,
       });
 
-      if (nextDeliver === null) {
+      if (rawNextDeliver === null) {
         return { output: "" };
       }
+
+      const nextDeliver = await resolveDelivery(rawNextDeliver);
+      if (nextDeliver === undefined) continue;
 
       const remainder = await routeDeliverToChildren({
         auth: nextDeliver.auth,
@@ -275,6 +361,7 @@ async function runDriverLoop(input: {
         deliveryHook,
         mode: input.mode,
         parentWritable: input.driverWritable,
+        resolveDelivery,
         serializedContext: action.serializedContext,
         sessionState: action.sessionState,
       });
@@ -292,6 +379,8 @@ async function finalizeDone(input: {
 }): Promise<WorkflowEntryResult> {
   const { output, serializedContext } = input.action;
   const failed = input.action.isError === true;
+
+  await closeSessionStreamStep(input.driverWritable);
 
   await fireSessionCallbackStep({
     error: failed ? output : undefined,

@@ -38,8 +38,10 @@ describe("truncateTail", () => {
 
   it("caps individual lines at the max line length", () => {
     const longLine = "x".repeat(MAX_LINE_LENGTH + 500);
-    const result = truncateTail(`short\n${longLine}`);
-    expect(result.truncated).toBe(false);
+    const input = `short\n${longLine}`;
+    const result = truncateTail(input);
+    expect(result.truncated).toBe(true);
+    expect(result.totalChars).toBe(input.length);
     const lines = result.output.split("\n");
     expect(lines[1]?.length).toBeLessThanOrEqual(MAX_LINE_LENGTH + 20);
     expect(lines[1]).toContain("[truncated]");
@@ -82,8 +84,10 @@ describe("truncateHead", () => {
 
   it("caps individual lines at the max line length", () => {
     const longLine = "x".repeat(MAX_LINE_LENGTH + 500);
-    const result = truncateHead(`${longLine}\nshort`);
-    expect(result.truncated).toBe(false);
+    const input = `${longLine}\nshort`;
+    const result = truncateHead(input);
+    expect(result.truncated).toBe(true);
+    expect(result.totalChars).toBe(input.length);
     const lines = result.output.split("\n");
     expect(lines[0]?.length).toBeLessThanOrEqual(MAX_LINE_LENGTH + 20);
     expect(lines[0]).toContain("[truncated]");

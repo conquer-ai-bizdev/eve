@@ -37,7 +37,19 @@ type ProviderMetadataEntry = NonNullable<ProviderMetadata[string]>;
 type GatewayGenerationId = Extract<ProviderMetadataEntry["generationId"], string>;
 
 export interface StepCompletedProviderMetadata {
-  readonly gateway: {
+  readonly "eve-codex-model"?: {
+    readonly adapterRevision: string;
+    readonly adapterVersion: string;
+    readonly credentialStoreType:
+      | "custom"
+      | "env"
+      | "file"
+      | "file-with-env-seed"
+      | "layered"
+      | "vercel-blob";
+    readonly schemaVersion: 1;
+  };
+  readonly gateway?: {
     readonly generationId: GatewayGenerationId;
   };
 }

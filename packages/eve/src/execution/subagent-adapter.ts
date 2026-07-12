@@ -33,6 +33,7 @@ export const SUBAGENT_ADAPTER_KIND = "subagent";
  * child's parent-turn lineage.
  */
 export interface SubagentAdapterState extends Record<string, unknown> {
+  readonly background?: boolean;
   readonly callId: string;
   readonly parentContinuationToken: string;
   readonly parentSessionId: string;
@@ -74,15 +75,17 @@ export function isSubagentAdapterState(value: unknown): value is SubagentAdapter
 export const SUBAGENT_ADAPTER: ChannelAdapter = {
   kind: SUBAGENT_ADAPTER_KIND,
   async "authorization.required"(data, ctx) {
+    if (ctx.state?.background === true) return;
     await forwardSubagentAuthorizationEvent({ data, type: "authorization.required" }, ctx);
   },
   async "authorization.completed"(data, ctx) {
+    if (ctx.state?.background === true) return;
     await forwardSubagentAuthorizationEvent({ data, type: "authorization.completed" }, ctx);
   },
   async "input.requested"(data, ctx) {
     const state = ctx.state;
 
-    if (!isSubagentAdapterState(state)) {
+    if (!isSubagentAdapterState(state) || state.background === true) {
       return;
     }
 

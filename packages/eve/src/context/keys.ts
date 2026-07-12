@@ -50,7 +50,10 @@ export interface Session {
   readonly auth: SessionAuth;
   readonly parent?: SessionParent;
   readonly sessionId: string;
-  readonly turn: SessionTurn;
+  readonly turn: SessionTurn & {
+    /** Current persisted model-step index, used by internal authored-call identity. */
+    readonly modelStepIndex?: number;
+  };
 }
 
 // ---------------------------------------------------------------------------

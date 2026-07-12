@@ -15,6 +15,7 @@ import { turnStep } from "#execution/workflow-steps.js";
 
 const resumeHookMock = vi.fn();
 const createHookMock = vi.fn();
+const acknowledgeSubagentTurnCancellationStepMock = vi.fn();
 
 vi.mock("#compiled/@workflow/core/index.js", () => ({
   createHook: (...args: unknown[]) => createHookMock(...args),
@@ -34,6 +35,8 @@ vi.mock("./subagent-event-proxy-step.js", () => ({
 }));
 
 vi.mock("./workflow-steps.js", () => ({
+  acknowledgeSubagentTurnCancellationStep: (...args: unknown[]) =>
+    acknowledgeSubagentTurnCancellationStepMock(...args),
   turnStep: vi.fn(),
 }));
 
@@ -54,6 +57,7 @@ describe("turnWorkflow", () => {
     vi.clearAllMocks();
     resumeHookMock.mockReset();
     createHookMock.mockReset();
+    acknowledgeSubagentTurnCancellationStepMock.mockReset();
   });
 
   it("notifies the driver when a turn completes", async () => {
@@ -393,6 +397,53 @@ describe("turnWorkflow", () => {
       expect.objectContaining({
         action: expect.objectContaining({ kind: "dispatch-runtime-actions" }),
       }),
+    );
+  });
+
+  it("acknowledges cancellation while waiting for a foreground child", async () => {
+    const sessionState = createSessionState();
+    installInbox([
+      { kind: "subagent-control-cancelled" } as never,
+      {
+        kind: "runtime-action-result",
+        results: [
+          {
+            callId: "call-1",
+            kind: "subagent-result",
+            output: "must not resume parent",
+            subagentName: "delegate",
+          },
+        ],
+      },
+    ]);
+    vi.mocked(dispatchRuntimeActionsStep).mockResolvedValue({
+      results: [],
+      sessionState,
+    });
+    vi.mocked(turnStep).mockResolvedValueOnce({
+      action: "park",
+      hasPendingAuthorization: false,
+      hasPendingInputBatch: false,
+      pendingRuntimeActionKeys: ["subagent-call:delegate:call-1"],
+      serializedContext: { state: "pending" },
+      sessionState,
+    });
+
+    const { input } = createInput({
+      driverCapabilities: { turnInbox: true },
+      mode: "task",
+      sessionState,
+    });
+    await turnWorkflow(input);
+
+    expect(acknowledgeSubagentTurnCancellationStepMock).toHaveBeenCalledWith({
+      sessionId: "wrun_test_123",
+      turnId: "turn-token",
+    });
+    expect(turnStep).toHaveBeenCalledOnce();
+    expect(resumeHookMock).not.toHaveBeenCalledWith(
+      "turn-token",
+      expect.objectContaining({ kind: "turn-result" }),
     );
   });
 

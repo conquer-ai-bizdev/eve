@@ -26,6 +26,7 @@ import {
   type WorkflowMetadata,
 } from "#internal/workflow/runtime.js";
 import type { HandleMessageStreamEvent } from "#protocol/message.js";
+import type { WorkflowEntryInput } from "#execution/workflow-entry.js";
 import type { RuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import { ROOT_RUNTIME_AGENT_NODE_ID } from "#runtime/graph.js";
 import { normalizeEveAttributes } from "#runtime/attributes/normalize.js";
@@ -52,6 +53,8 @@ export const LATEST_DEPLOYMENT_UNSUPPORTED_MESSAGE =
  * template) read this single set so they cannot drift.
  */
 export const STABLE_WORKFLOW_NAMES: ReadonlySet<string> = new Set([
+  "coordinatedSubagentSpawnWorkflow",
+  "deliverSubagentControlMessageWorkflow",
   WORKFLOW_ENTRY_NAME,
   TURN_WORKFLOW_NAME,
 ]);
@@ -59,6 +62,14 @@ export const STABLE_WORKFLOW_NAMES: ReadonlySet<string> = new Set([
 const STABLE_ID_BASE = EVE_PACKAGE_INFO.name;
 
 const log = createLogger("execution.workflow-runtime");
+
+export interface PreparedWorkflowRunStart {
+  readonly continuationToken?: string;
+  readonly input: WorkflowEntryInput;
+  readonly options: StartOptionsWithoutDeploymentId;
+  readonly useLatestDeployment: boolean;
+  readonly workflowId: string;
+}
 
 interface WorkflowHookRecord {
   readonly runId: string;
@@ -95,43 +106,14 @@ export function createWorkflowRuntime(config: {
 }): Runtime {
   return {
     async run(input: RunInput): Promise<RunHandle> {
-      const bundle = await getCompiledRuntimeAgentBundle({
-        compiledArtifactsSource: config.compiledArtifactsSource,
-        nodeId: config.nodeId,
-      });
-      const ctx = buildRunContext({ bundle, run: input });
-      const serializedContext = serializeContext(ctx);
-      const parentLineage = readParentLineage(serializedContext);
-      const attributes =
-        parentLineage.sessionId === undefined
-          ? buildSessionAttributes({
-              inputMessage: input.title ?? input.input.message,
-              serializedContext,
-            })
-          : buildSubagentRootAttributes({
-              identity: { nodeId: bundle.nodeId ?? ROOT_RUNTIME_AGENT_NODE_ID },
-              parentCallId: parentLineage.callId,
-              parentSessionId: parentLineage.sessionId,
-              parentTurnId: parentLineage.turnId,
-              rootSessionId: parentLineage.rootSessionId ?? parentLineage.sessionId,
-              serializedContext,
-            });
+      const prepared = await prepareWorkflowRunStart(config, input);
 
       let run: Awaited<ReturnType<typeof startWorkflowPreferLatest>>;
       try {
         run = await startWorkflowPreferLatest(
-          workflowEntryReference,
-          [
-            {
-              input: input.input,
-              limits: input.limits,
-              serializedContext,
-            },
-          ],
-          {
-            allowReservedAttributes: true,
-            attributes: normalizeEveAttributes(attributes),
-          },
+          { workflowId: prepared.workflowId },
+          [prepared.input],
+          prepared.options,
         );
       } catch (error) {
         logError(log, "failed to start workflow run", error, {
@@ -149,7 +131,7 @@ export function createWorkflowRuntime(config: {
       };
 
       return {
-        continuationToken: input.continuationToken ?? run.runId,
+        continuationToken: prepared.continuationToken ?? run.runId,
         get events() {
           return getEvents();
         },
@@ -188,6 +170,54 @@ export function createWorkflowRuntime(config: {
         getRun(sessionId).getReadable({ startIndex: options?.startIndex }),
       );
     },
+  };
+}
+
+/** Prepares the serializable start request used by direct and coordinated starts. */
+export async function prepareWorkflowRunStart(
+  config: {
+    readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
+    readonly nodeId?: string;
+  },
+  input: RunInput,
+): Promise<PreparedWorkflowRunStart> {
+  const bundle = await getCompiledRuntimeAgentBundle({
+    compiledArtifactsSource: config.compiledArtifactsSource,
+    nodeId: config.nodeId,
+  });
+  const ctx = buildRunContext({ bundle, run: input });
+  const serializedContext = serializeContext(ctx);
+  const parentLineage = readParentLineage(serializedContext);
+  const attributes =
+    parentLineage.sessionId === undefined
+      ? buildSessionAttributes({
+          inputMessage: input.title ?? input.input.message,
+          serializedContext,
+        })
+      : buildSubagentRootAttributes({
+          identity: { nodeId: bundle.nodeId ?? ROOT_RUNTIME_AGENT_NODE_ID },
+          parentCallId: parentLineage.callId,
+          parentSessionId: parentLineage.sessionId,
+          parentTurnId: parentLineage.turnId,
+          rootSessionId: parentLineage.rootSessionId ?? parentLineage.sessionId,
+          serializedContext,
+        });
+
+  return {
+    ...(input.continuationToken === undefined
+      ? {}
+      : { continuationToken: input.continuationToken }),
+    input: {
+      input: input.input,
+      limits: input.limits,
+      serializedContext,
+    },
+    options: {
+      allowReservedAttributes: true,
+      attributes: normalizeEveAttributes(attributes),
+    },
+    useLatestDeployment: shouldRouteToLatestDeployment(),
+    workflowId: workflowEntryReference.workflowId,
   };
 }
 

@@ -110,6 +110,7 @@ export function buildSubagentRunInput(input: {
     adapter: {
       kind: SUBAGENT_ADAPTER_KIND,
       state: {
+        ...(isBackgroundSubagentCall(action) ? { background: true } : {}),
         callId: action.callId,
         parentContinuationToken: input.parentContinuationToken ?? session.continuationToken,
         parentSessionId: session.sessionId,
@@ -129,7 +130,7 @@ export function buildSubagentRunInput(input: {
       outputSchema: action.input.outputSchema as JsonObject | undefined,
     },
     limits: inheritedLimits,
-    mode: "task",
+    mode: isBackgroundSubagentCall(action) ? "conversation" : "task",
     parent: {
       callId: action.callId,
       rootSessionId,
@@ -143,6 +144,13 @@ export function buildSubagentRunInput(input: {
   };
 
   return { childContinuationToken, runInput };
+}
+
+/** Returns whether a native subagent call releases the parent after child creation. */
+export function isBackgroundSubagentCall(
+  action: Pick<RuntimeSubagentCallActionRequest, "input">,
+): boolean {
+  return action.input.mode === "background";
 }
 
 /**

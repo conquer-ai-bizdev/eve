@@ -16,17 +16,24 @@ export class TurnControlReceiver {
   private readonly control: Hook<TurnControlPayload>;
   private readonly controlIterator: AsyncIterator<TurnControlPayload>;
   private readonly deliveryHook: SessionDeliveryHook;
+  private readonly resolveDelivery: (
+    delivery: DeliverHookPayload,
+  ) => Promise<DeliverHookPayload | undefined>;
   private pendingControl: Promise<IteratorResult<TurnControlPayload>> | null = null;
 
   constructor(input: {
     readonly bufferedDeliveries: DeliverHookPayload[];
     readonly deliveryHook: SessionDeliveryHook;
+    readonly resolveDelivery: (
+      delivery: DeliverHookPayload,
+    ) => Promise<DeliverHookPayload | undefined>;
     readonly token: string;
   }) {
     this.bufferedDeliveries = input.bufferedDeliveries;
     this.control = createHook<TurnControlPayload>({ token: input.token });
     this.controlIterator = this.control[Symbol.asyncIterator]();
     this.deliveryHook = input.deliveryHook;
+    this.resolveDelivery = input.resolveDelivery;
   }
 
   /** Token passed to the turn workflow so it can publish control messages. */
@@ -105,8 +112,14 @@ export class TurnControlReceiver {
   ): Promise<NextDriverAction | undefined> {
     await this.deliveryHook.rekey(request.continuationToken);
 
-    let delivery = this.bufferedDeliveries.shift();
+    let delivery: DeliverHookPayload | undefined;
     while (delivery === undefined) {
+      const buffered = this.bufferedDeliveries.shift();
+      if (buffered !== undefined) {
+        delivery = await this.resolveDelivery(buffered);
+        if (delivery !== undefined) break;
+      }
+
       const winner = await Promise.race([
         this.getControlPromise().then((value) => ({ kind: "control" as const, value })),
         this.deliveryHook.next().then((value) => ({ kind: "delivery" as const, value })),
@@ -138,7 +151,7 @@ export class TurnControlReceiver {
 
       this.deliveryHook.consumeNext();
       if (winner.value.value.kind !== "deliver") continue;
-      delivery = winner.value.value;
+      delivery = await this.resolveDelivery(winner.value.value);
     }
 
     // Forwarding is provisional until the turn acknowledges it. If the inbox is

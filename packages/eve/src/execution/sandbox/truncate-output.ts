@@ -41,6 +41,8 @@ export interface TruncationResult {
   readonly totalLines: number;
   /** Number of lines included in the truncated output. */
   readonly outputLines: number;
+  /** Number of characters in the original input. */
+  readonly totalChars: number;
 }
 
 /**
@@ -84,12 +86,15 @@ function truncateByDirection(text: string, direction: "head" | "tail"): Truncati
 
   const kept: string[] = [];
   let bytes = 0;
+  let cappedLine = false;
 
   const start = fromStart ? 0 : rawLines.length - 1;
   const step = fromStart ? 1 : -1;
 
   for (let i = start; i >= 0 && i < rawLines.length && kept.length < MAX_OUTPUT_LINES; i += step) {
-    const line = capLineLength(rawLines[i] ?? "");
+    const rawLine = rawLines[i] ?? "";
+    const line = capLineLength(rawLine);
+    if (line !== rawLine) cappedLine = true;
     const lineBytes = Buffer.byteLength(line, "utf8") + 1;
 
     if (bytes + lineBytes > MAX_OUTPUT_BYTES && kept.length > 0) {
@@ -107,8 +112,9 @@ function truncateByDirection(text: string, direction: "head" | "tail"): Truncati
   return {
     output: kept.join("\n"),
     outputLines: kept.length,
+    totalChars: text.length,
     totalLines,
-    truncated: kept.length < totalLines,
+    truncated: kept.length < totalLines || cappedLine,
   };
 }
 

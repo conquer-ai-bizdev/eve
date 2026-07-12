@@ -6,6 +6,7 @@ import type {
   ToolModelOutput,
 } from "#shared/tool-definition.js";
 import type { SessionContext } from "#public/definitions/callback-context.js";
+import type { SubagentController } from "#public/definitions/subagent-control.js";
 import type { Approval } from "#public/definitions/approval.js";
 import type { SessionAuth } from "#context/keys.js";
 import type { HandleMessageStreamEvent } from "#protocol/message.js";
@@ -13,6 +14,7 @@ import type { HandleMessageStreamEvent } from "#protocol/message.js";
 type ToolContext = SessionContext & {
   /** Aborts when the active turn is cancelled. */
   readonly abortSignal: AbortSignal;
+  readonly subagents: SubagentController;
 };
 
 /**

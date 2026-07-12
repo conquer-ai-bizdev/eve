@@ -22,6 +22,8 @@ export const TURN_WORKFLOW_INPUT_VERSION = 1;
 export interface TurnStepInput {
   /** Cancellation signal forwarded into the turn step. */
   readonly abortSignal?: AbortSignal;
+  /** Session-mailbox reservation id for this turn. */
+  readonly controlTurnId?: string;
   readonly input: HookPayload | undefined;
   readonly parentWritable: WritableStream<Uint8Array>;
   readonly serializedContext: Record<string, unknown>;
@@ -62,6 +64,7 @@ export function createTurnWorkflowInput(input: TurnWorkflowDispatchInput): TurnW
     driverCapabilities: { turnInbox: true },
     mode: input.mode,
     stepInput: {
+      controlTurnId: input.completionToken,
       input: input.delivery,
       parentWritable: input.parentWritable,
       serializedContext: input.serializedContext,

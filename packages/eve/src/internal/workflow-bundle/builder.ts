@@ -63,7 +63,11 @@ export class WorkflowBundleBuilder {
   readonly #discoveredEntries = new WeakMap<readonly string[], WorkflowBundleDiscoveredEntries>();
 
   constructor(options: WorkflowBundleBuilderOptions) {
-    const dirs = [resolvePackageSourceDirectoryPath("src/execution")];
+    // EVE SUBAGENT CONTROL EVE-001: durable steps; see features/subagent-supervision/README.md.
+    const dirs = [
+      resolvePackageSourceDirectoryPath("src/execution"),
+      resolvePackageSourceDirectoryPath("src/features/subagent-supervision"),
+    ];
     if (options.includeTestFixtures === true) {
       dirs.push(resolvePackageSourceDirectoryPath("src/internal/testing"));
     }

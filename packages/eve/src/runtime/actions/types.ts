@@ -140,6 +140,7 @@ export type RuntimeSubagentResultActionResult = z.infer<
  */
 const runtimeSubagentResultActionResultSchema = z
   .object({
+    background: z.boolean().optional(),
     callId: z.string(),
     isError: z.boolean().optional(),
     kind: z.literal("subagent-result"),

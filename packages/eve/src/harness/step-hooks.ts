@@ -448,7 +448,52 @@ function extractStepProviderMetadata(
   providerMetadata: ProviderMetadata | undefined,
 ): StepCompletedProviderMetadata | undefined {
   const generationId = readGatewayGenerationId(providerMetadata);
-  return generationId === undefined ? undefined : { gateway: { generationId } };
+  const codex = readCodexAdapterMetadata(providerMetadata);
+  if (generationId === undefined && codex === undefined) return undefined;
+  return {
+    ...(codex === undefined ? {} : { "eve-codex-model": codex }),
+    ...(generationId === undefined ? {} : { gateway: { generationId } }),
+  };
+}
+
+function readCodexAdapterMetadata(
+  providerMetadata: ProviderMetadata | undefined,
+): StepCompletedProviderMetadata["eve-codex-model"] | undefined {
+  const raw = providerMetadata?.["eve-codex-model"];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const adapterRevision = raw.adapterRevision;
+  const adapterVersion = raw.adapterVersion;
+  const credentialStoreType = raw.credentialStoreType;
+  if (
+    raw.schemaVersion !== 1 ||
+    typeof adapterVersion !== "string" ||
+    adapterVersion.length === 0 ||
+    adapterVersion.length > 64 ||
+    typeof adapterRevision !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/.test(adapterRevision) ||
+    !isCredentialStoreType(credentialStoreType)
+  ) {
+    return undefined;
+  }
+  return {
+    adapterRevision,
+    adapterVersion,
+    credentialStoreType,
+    schemaVersion: 1,
+  };
+}
+
+function isCredentialStoreType(
+  value: unknown,
+): value is NonNullable<StepCompletedProviderMetadata["eve-codex-model"]>["credentialStoreType"] {
+  return (
+    value === "custom" ||
+    value === "env" ||
+    value === "file" ||
+    value === "file-with-env-seed" ||
+    value === "layered" ||
+    value === "vercel-blob"
+  );
 }
 
 function extractGatewayCostUsd(providerMetadata: ProviderMetadata | undefined): number | undefined {
