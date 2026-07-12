@@ -48,6 +48,31 @@ describe("buildSandboxSession", () => {
     expect(session.id).toBe("sbx-123");
   });
 
+  it("forwards the optional Vercel command primitive", async () => {
+    const runVercelCommand = vi.fn(async () => ({
+      exitCode: 7,
+      stderr: "warning",
+      stdout: "result",
+    }));
+    const session = buildSandboxSession({
+      ...createTestPrimitives(),
+      runVercelCommand,
+    });
+
+    await expect(session.runVercelCommand?.({ args: ["status"], cmd: "git" })).resolves.toEqual({
+      exitCode: 7,
+      stderr: "warning",
+      stdout: "result",
+    });
+    expect(runVercelCommand).toHaveBeenCalledWith({ args: ["status"], cmd: "git" });
+  });
+
+  it("omits the Vercel command method for other backends", () => {
+    const session = buildSandboxSession(createTestPrimitives());
+
+    expect(session.runVercelCommand).toBeUndefined();
+  });
+
   // ---------------------------------------------------------------------------
   // setNetworkPolicy
   // ---------------------------------------------------------------------------

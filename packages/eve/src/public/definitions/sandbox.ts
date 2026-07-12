@@ -17,6 +17,8 @@ export type {
   SandboxWriteBinaryFileOptions,
   SandboxWriteFileOptions,
   SandboxWriteTextFileOptions,
+  VercelSandboxRunCommandOptions,
+  VercelSandboxRunCommandResult,
 } from "#shared/sandbox-session.js";
 export type {
   SandboxBootstrapUseFn,

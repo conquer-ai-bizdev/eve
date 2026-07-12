@@ -76,6 +76,22 @@ export interface SandboxRemovePathOptions {
   readonly recursive?: boolean;
 }
 
+export interface VercelSandboxRunCommandOptions {
+  readonly abortSignal?: AbortSignal;
+  readonly args?: readonly string[];
+  readonly cmd: string;
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly sudo?: boolean;
+  readonly timeoutMs?: number;
+}
+
+export interface VercelSandboxRunCommandResult {
+  readonly exitCode: number;
+  readonly stderr: string;
+  readonly stdout: string;
+}
+
 /**
  * Public eve-owned sandbox session exposed to authored lifecycle hooks.
  *
@@ -101,6 +117,9 @@ export interface SandboxSession extends Pick<
   | "writeBinaryFile"
   | "writeTextFile"
 > {
+  runVercelCommand?(
+    options: VercelSandboxRunCommandOptions,
+  ): Promise<VercelSandboxRunCommandResult>;
   /**
    * Stable identifier for the backend session this handle wraps.
    *
@@ -161,6 +180,9 @@ export interface InternalSandboxSession extends Pick<
   AiSdkSandbox,
   "spawn" | "readFile" | "writeFile"
 > {
+  runVercelCommand?(
+    options: VercelSandboxRunCommandOptions,
+  ): Promise<VercelSandboxRunCommandResult>;
   /**
    * Stable identifier surfaced on the public {@link SandboxSession}.
    */

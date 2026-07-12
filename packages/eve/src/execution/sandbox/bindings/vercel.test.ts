@@ -1558,6 +1558,37 @@ describe("createVercelSandbox", () => {
     );
   });
 
+  it("forwards structured Vercel commands without a shell wrapper", async () => {
+    const { handle, sessionSandbox } = await createTestVercelSession();
+    const abortController = new AbortController();
+    sessionSandbox.runCommand.mockResolvedValueOnce({
+      exitCode: 3,
+      stderr: vi.fn().mockResolvedValue("failure"),
+      stdout: vi.fn().mockResolvedValue("output"),
+    });
+
+    const result = await handle.session.runVercelCommand?.({
+      abortSignal: abortController.signal,
+      args: ["status", "--short"],
+      cmd: "git",
+      cwd: "/workspace/crm",
+      env: { GIT_OPTIONAL_LOCKS: "0" },
+      sudo: true,
+      timeoutMs: 5_000,
+    });
+
+    expect(sessionSandbox.runCommand).toHaveBeenCalledWith({
+      args: ["status", "--short"],
+      cmd: "git",
+      cwd: "/workspace/crm",
+      env: { GIT_OPTIONAL_LOCKS: "0" },
+      signal: abortController.signal,
+      sudo: true,
+      timeoutMs: 5_000,
+    });
+    expect(result).toEqual({ exitCode: 3, stderr: "failure", stdout: "output" });
+  });
+
   it("exposes a stable backend name", () => {
     const backend = createTestVercelSandbox();
     expect(backend.name).toBe("vercel");

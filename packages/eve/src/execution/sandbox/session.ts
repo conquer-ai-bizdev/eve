@@ -11,6 +11,7 @@ import type {
   SandboxWriteBinaryFileOptions,
   SandboxWriteFileOptions,
   SandboxWriteTextFileOptions,
+  VercelSandboxRunCommandOptions,
 } from "#shared/sandbox-session.js";
 import type { SandboxNetworkPolicy } from "#shared/sandbox-network-policy.js";
 import { bufferToStream, streamToBuffer } from "./stream-utils.js";
@@ -44,6 +45,12 @@ export function buildSandboxSession(
     return { exitCode, stderr, stdout };
   }
   return {
+    ...(primitives.runVercelCommand === undefined
+      ? {}
+      : {
+          runVercelCommand: async (options: VercelSandboxRunCommandOptions) =>
+            await primitives.runVercelCommand!(options),
+        }),
     id: primitives.id,
     resolvePath(path: string): string {
       return primitives.resolvePath(path);

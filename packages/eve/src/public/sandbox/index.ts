@@ -21,6 +21,8 @@ export {
   type SandboxWriteBinaryFileOptions,
   type SandboxWriteFileOptions,
   type SandboxWriteTextFileOptions,
+  type VercelSandboxRunCommandOptions,
+  type VercelSandboxRunCommandResult,
 } from "#public/definitions/sandbox.js";
 export type {
   SandboxBackend,

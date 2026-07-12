@@ -53,6 +53,10 @@ function createRecordingSession(calls: RecordedCall[]): SandboxSession {
     removePath: async (options) => {
       record("removePath", options.abortSignal);
     },
+    runVercelCommand: async (options) => {
+      record("runVercelCommand", options.abortSignal);
+      return commandResult;
+    },
     setNetworkPolicy: async () => {},
   };
 }
@@ -72,6 +76,7 @@ describe("bindSandboxAbortSignal", () => {
     await bound.writeBinaryFile({ content: new Uint8Array(), path: "a.bin" });
     await bound.writeTextFile({ content: "hello", path: "a.txt" });
     await bound.removePath({ path: "a.txt" });
+    await bound.runVercelCommand?.({ cmd: "git" });
 
     expect(calls.map((call) => call.method)).toEqual([
       "run",
@@ -83,6 +88,7 @@ describe("bindSandboxAbortSignal", () => {
       "writeBinaryFile",
       "writeTextFile",
       "removePath",
+      "runVercelCommand",
     ]);
     for (const call of calls) {
       expect(call.abortSignal).toBe(signal);

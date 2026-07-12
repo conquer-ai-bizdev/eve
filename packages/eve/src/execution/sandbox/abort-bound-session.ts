@@ -9,6 +9,7 @@ import type {
   SandboxWriteBinaryFileOptions,
   SandboxWriteFileOptions,
   SandboxWriteTextFileOptions,
+  VercelSandboxRunCommandOptions,
 } from "#shared/sandbox-session.js";
 
 /**
@@ -24,6 +25,15 @@ export function bindSandboxAbortSignal(
 
   return {
     ...session,
+    ...(session.runVercelCommand === undefined
+      ? {}
+      : {
+          runVercelCommand: (options: VercelSandboxRunCommandOptions) =>
+            session.runVercelCommand!({
+              ...options,
+              abortSignal: compose(options.abortSignal),
+            }),
+        }),
     run: (options: SandboxRunOptions) =>
       session.run({ ...options, abortSignal: compose(options.abortSignal) }),
     spawn: (options: SandboxSpawnOptions) =>

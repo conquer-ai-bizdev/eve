@@ -11,6 +11,8 @@ import type {
   SandboxRemovePathOptions,
   SandboxSpawnOptions,
   SandboxWriteFileOptions,
+  VercelSandboxRunCommandOptions,
+  VercelSandboxRunCommandResult,
 } from "#shared/sandbox-session.js";
 import type {
   SandboxBackend,
@@ -490,6 +492,24 @@ function createVercelInternalSandboxSession(
   return {
     id,
     resolvePath: resolveVercelSandboxPath,
+    async runVercelCommand(
+      options: VercelSandboxRunCommandOptions,
+    ): Promise<VercelSandboxRunCommandResult> {
+      const result = await sandbox.runCommand({
+        args: [...(options.args ?? [])],
+        cmd: options.cmd,
+        cwd: options.cwd,
+        env: options.env ?? {},
+        signal: options.abortSignal,
+        sudo: options.sudo ?? false,
+        timeoutMs: options.timeoutMs,
+      });
+      return {
+        exitCode: result.exitCode,
+        stderr: await result.stderr(),
+        stdout: await result.stdout(),
+      };
+    },
     async spawn(options: SandboxSpawnOptions): Promise<SandboxProcess> {
       const command = await sandbox.runCommand({
         args: ["-lc", options.command],
