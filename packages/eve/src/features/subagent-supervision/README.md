@@ -50,6 +50,8 @@ event definitions or inspect Workflow storage.
 
 ## Integration Seams
 
+- `controller.ts` owns authorization and descendant lifecycle operations;
+  `session-stream.ts` owns bounded public stream projection.
 - `context/build-base-tool-context.ts`: installs the controller.
 - `public/definitions/tool.ts`: declares the authored context capability.
 - `public/tools/index.ts`: exports public types and capability revision.
