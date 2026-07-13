@@ -33,7 +33,10 @@ export type {
   ChildWaitResult,
   SubagentController,
 } from "#public/definitions/subagent-control.js";
-export { SUBAGENT_SUPERVISION_CAPABILITY } from "#features/subagent-supervision/capability.js";
+export {
+  SUBAGENT_MAX_WAIT_TIMEOUT_MS,
+  SUBAGENT_SUPERVISION_CAPABILITY,
+} from "#features/subagent-supervision/capability.js";
 export type {
   DynamicToolEntry,
   DynamicEvents,

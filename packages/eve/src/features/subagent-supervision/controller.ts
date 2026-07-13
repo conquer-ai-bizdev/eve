@@ -1,6 +1,7 @@
 import { getWorld, getRun, type Run } from "#internal/workflow/runtime.js";
 
 import { mintSubagentContinuationToken } from "#execution/session.js";
+import { SUBAGENT_MAX_WAIT_TIMEOUT_MS } from "#features/subagent-supervision/capability.js";
 import {
   fenceSubagentControlMailbox,
   readSubagentControlLineageMailbox,
@@ -51,7 +52,6 @@ interface ControllerOptions {
 }
 
 const TERMINAL_STATUSES = new Set<ChildLifecycleStatus>(["completed", "failed", "cancelled"]);
-const MAX_SUBAGENT_WAIT_TIMEOUT_MS = 10 * 60_000;
 
 /** Builds the public descendant controller for one authored tool call. */
 export function createSubagentController(options: ControllerOptions): SubagentController {
@@ -217,7 +217,7 @@ async function waitForChild(
   decodeCursor(input.after);
   const timeoutMs = Math.max(
     1,
-    Math.min(MAX_SUBAGENT_WAIT_TIMEOUT_MS, Math.floor(input.timeoutMs)),
+    Math.min(SUBAGENT_MAX_WAIT_TIMEOUT_MS, Math.floor(input.timeoutMs)),
   );
   const idempotencyKey = input.idempotencyKey.trim();
   if (idempotencyKey.length === 0) throw new Error("wait idempotencyKey is required");

@@ -14,8 +14,9 @@ private to Eve.
 
 `ToolContext.subagents` authorizes a durable descendant and returns a handle
 with snapshot, wait, send, and recursive cancel operations. Public definitions
-are re-exported through `eve/tools`. Capability revision 1 is exported as
-`SUBAGENT_SUPERVISION_CAPABILITY`.
+are re-exported through `eve/tools`. Capability revision 2 is exported as
+`SUBAGENT_SUPERVISION_CAPABILITY`; `SUBAGENT_MAX_WAIT_TIMEOUT_MS` exposes the
+runtime's wait limit to authored control packages.
 
 Snapshot events are a documented, model-safe projection of Eve's public
 session-stream protocol. They preserve public turn, action, message, lifecycle,
