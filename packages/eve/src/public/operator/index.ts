@@ -222,13 +222,16 @@ export async function runOperatorSandboxCommand(
     throw new Error(`Node "${node.nodeId}" has no resolved bash tool.`);
   }
 
-  const execution = contextStorage.run(context, async () => {
-    return await execute(
-      { command },
-      { messages: [], toolCallId: `operator:${options.sessionId}` },
-    );
-  });
-  const result = await withTimeout(execution, options.timeoutMs ?? 120_000);
+  const result = await withAbortTimeout(
+    async (abortSignal) =>
+      await contextStorage.run(context, async () => {
+        return await execute(
+          { command },
+          { abortSignal, messages: [], toolCallId: `operator:${options.sessionId}` },
+        );
+      }),
+    options.timeoutMs ?? 120_000,
+  );
   const output = normalizeCommandResult(result);
   return {
     agentName: node.agent.config.name,
@@ -290,19 +293,27 @@ function normalizeCommandResult(result: unknown): {
   };
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+async function withAbortTimeout<T>(
+  execute: (abortSignal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutError = new Error(`bash tool timed out after ${timeoutMs}ms`);
+  let timedOut = false;
   let timer: NodeJS.Timeout | undefined;
   try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`bash tool timed out after ${timeoutMs}ms`)),
-          timeoutMs,
-        );
-        timer.unref?.();
-      }),
-    ]);
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort(timeoutError);
+    }, timeoutMs);
+    timer.unref?.();
+
+    const result = await execute(controller.signal);
+    if (timedOut) throw timeoutError;
+    return result;
+  } catch (error) {
+    if (timedOut) throw timeoutError;
+    throw error;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }

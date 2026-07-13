@@ -169,7 +169,11 @@ describe("operator sandbox API", () => {
     });
     expect(execute).toHaveBeenCalledWith(
       { command: "printf CONTROL_OK" },
-      { messages: [], toolCallId: "operator:operator-1" },
+      {
+        abortSignal: expect.objectContaining({ aborted: false }),
+        messages: [],
+        toolCallId: "operator:operator-1",
+      },
     );
     expect(mocks.ensureSandboxAccess).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -200,8 +204,21 @@ describe("operator sandbox API", () => {
   });
 
   it("times out a command that does not settle", async () => {
+    let commandSignal: AbortSignal | undefined;
+    let commandSettled = false;
     mocks.getCompiledRuntimeAgentBundle.mockResolvedValue({
-      graph: graphFixture(async () => await new Promise(() => {})),
+      graph: graphFixture(async (_input, options) => {
+        commandSignal = (options as { abortSignal?: AbortSignal }).abortSignal;
+        try {
+          return await new Promise((_resolve, reject) => {
+            commandSignal?.addEventListener("abort", () => reject(commandSignal?.reason), {
+              once: true,
+            });
+          });
+        } finally {
+          commandSettled = true;
+        }
+      }),
     });
 
     await expect(
@@ -212,6 +229,8 @@ describe("operator sandbox API", () => {
         timeoutMs: 5,
       }),
     ).rejects.toThrow("bash tool timed out after 5ms");
+    expect(commandSignal?.aborted).toBe(true);
+    expect(commandSettled).toBe(true);
   });
 });
 
