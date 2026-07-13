@@ -70,6 +70,32 @@ describe("subagent controller snapshots and waits", () => {
     expect(resolveSubagentWaitState).toHaveBeenCalledOnce();
   });
 
+  it("preserves waits longer than one minute and caps them at ten minutes", async () => {
+    vi.mocked(resolveSubagentWaitState).mockResolvedValue({
+      after: "cursor:v1:0",
+      deadlineAt: Date.now() - 1,
+    });
+    const child = await controller().get("child");
+
+    await child.wait({
+      after: "cursor:v1:0",
+      idempotencyKey: "long-wait",
+      timeoutMs: 180_000,
+    });
+    expect(resolveSubagentWaitState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timeoutMs: 180_000 }),
+    );
+
+    await child.wait({
+      after: "cursor:v1:0",
+      idempotencyKey: "bounded-wait",
+      timeoutMs: 900_000,
+    });
+    expect(resolveSubagentWaitState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ timeoutMs: 600_000 }),
+    );
+  });
+
   it("validates wait identity before returning immediate activity", async () => {
     const child = await controller().get("child");
 

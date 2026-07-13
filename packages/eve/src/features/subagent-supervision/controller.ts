@@ -51,6 +51,7 @@ interface ControllerOptions {
 }
 
 const TERMINAL_STATUSES = new Set<ChildLifecycleStatus>(["completed", "failed", "cancelled"]);
+const MAX_SUBAGENT_WAIT_TIMEOUT_MS = 10 * 60_000;
 
 /** Builds the public descendant controller for one authored tool call. */
 export function createSubagentController(options: ControllerOptions): SubagentController {
@@ -214,7 +215,10 @@ async function waitForChild(
   },
 ): Promise<ChildWaitResult> {
   decodeCursor(input.after);
-  const timeoutMs = Math.max(1, Math.min(60_000, Math.floor(input.timeoutMs)));
+  const timeoutMs = Math.max(
+    1,
+    Math.min(MAX_SUBAGENT_WAIT_TIMEOUT_MS, Math.floor(input.timeoutMs)),
+  );
   const idempotencyKey = input.idempotencyKey.trim();
   if (idempotencyKey.length === 0) throw new Error("wait idempotencyKey is required");
   const waitState = await resolveSubagentWaitState({
