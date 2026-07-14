@@ -494,6 +494,7 @@ describe("workflowEntry integration", () => {
           allowReservedAttributes: true,
           attributes: normalizeEveAttributes(
             buildSessionAttributes({
+              agentName: "workflow-entry-tags",
               inputMessage: "session tag round-trip",
               serializedContext,
             }),
@@ -510,6 +511,7 @@ describe("workflowEntry integration", () => {
         const attrs = (persisted as { attributes?: Record<string, string> }).attributes ?? {};
 
         expect(attrs["$eve.type"]).toBe("session");
+        expect(attrs["$eve.agent"]).toBe("workflow-entry-tags");
         expect(attrs["$eve.trigger"]).toBe("http");
         expect(attrs["$eve.title"]).toContain("session tag round-trip");
         // Top-level sessions have no parent or subagent name on the root run.

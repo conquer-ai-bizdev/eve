@@ -141,6 +141,7 @@ describe("createWorkflowRuntime#run", () => {
   function mockBundleAndRun(compiledArtifactsSource: RuntimeCompiledArtifactsSource): void {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
       compiledArtifactsSource,
+      resolvedAgent: { config: { name: "test-agent" } },
     } as never);
     getRunMock.mockReturnValue({
       getReadable: () =>
@@ -180,6 +181,7 @@ describe("createWorkflowRuntime#run", () => {
       {
         allowReservedAttributes: true,
         attributes: {
+          "$eve.agent": "test-agent",
           "$eve.title": "hello",
           "$eve.trigger": "http",
           "$eve.type": "session",
@@ -235,6 +237,7 @@ describe("createWorkflowRuntime#run", () => {
       {
         allowReservedAttributes: true,
         attributes: {
+          "$eve.agent": "test-agent",
           "$eve.channel_request_id": "req_run",
           "$eve.title": "hello",
           "$eve.trigger": "http",
@@ -302,6 +305,7 @@ describe("createWorkflowRuntime#run", () => {
     expect(startMock).toHaveBeenNthCalledWith(1, workflowEntryReference, expect.any(Array), {
       allowReservedAttributes: true,
       attributes: {
+        "$eve.agent": "test-agent",
         "$eve.title": "hello",
         "$eve.trigger": "http",
         "$eve.type": "session",
@@ -311,6 +315,7 @@ describe("createWorkflowRuntime#run", () => {
     expect(startMock).toHaveBeenNthCalledWith(2, workflowEntryReference, expect.any(Array), {
       allowReservedAttributes: true,
       attributes: {
+        "$eve.agent": "test-agent",
         "$eve.title": "hello",
         "$eve.trigger": "http",
         "$eve.type": "session",
@@ -345,6 +350,7 @@ describe("createWorkflowRuntime#run", () => {
       expect(startMock).toHaveBeenCalledWith(workflowEntryReference, expect.any(Array), {
         allowReservedAttributes: true,
         attributes: {
+          "$eve.agent": "test-agent",
           "$eve.title": "hello",
           "$eve.trigger": "http",
           "$eve.type": "session",
@@ -357,6 +363,7 @@ describe("createWorkflowRuntime#run", () => {
     const compiledArtifactsSource = {} as RuntimeCompiledArtifactsSource;
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
       compiledArtifactsSource,
+      resolvedAgent: { config: { name: "test-agent" } },
     } as never);
     const bytes = new TextEncoder().encode('{"type":"test.event"}\n');
     const getReadable = vi.fn(

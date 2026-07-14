@@ -204,10 +204,12 @@ function collectMessageText(message: unknown): string | undefined {
  * so its own `workflowRunId` already identifies the chain root.
  */
 export function buildSessionAttributes(input: {
+  readonly agentName: string;
   readonly inputMessage: unknown;
   readonly serializedContext: Record<string, unknown>;
 }): Record<string, EveAttributeValue> {
   return {
+    "$eve.agent": input.agentName,
     "$eve.channel_request_id": readChannelRequestId(input.serializedContext),
     "$eve.type": "session",
     "$eve.trigger": readChannelKind(input.serializedContext),

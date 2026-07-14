@@ -124,6 +124,7 @@ They let a dashboard reconstruct the tree of runs behind a single agent invocati
 Structural tags describe each run's place in the tree:
 
 - `$eve.type`: `"session"`, `"turn"`, or `"subagent"`
+- `$eve.agent`: compiled root agent name (root session runs only)
 - `$eve.parent`: session id of the immediate parent
 - `$eve.root`: session id of the root session in the chain (group a whole tree with `$eve.root=<id>`)
 - `$eve.subagent`: compiled graph node id (subagent runs only)

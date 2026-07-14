@@ -191,6 +191,7 @@ export async function prepareWorkflowRunStart(
   const attributes =
     parentLineage.sessionId === undefined
       ? buildSessionAttributes({
+          agentName: bundle.resolvedAgent.config.name,
           inputMessage: input.title ?? input.input.message,
           serializedContext,
         })

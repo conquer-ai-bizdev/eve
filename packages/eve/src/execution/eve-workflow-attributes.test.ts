@@ -140,11 +140,13 @@ describe("deriveSessionTitle", () => {
 describe("buildSessionAttributes", () => {
   it("emits type=session with trigger and derived title", () => {
     const attrs = buildSessionAttributes({
+      agentName: "test-agent",
       inputMessage: "ship the thing please",
       serializedContext: slackChannelCtx,
     });
 
     expect(attrs).toEqual({
+      "$eve.agent": "test-agent",
       "$eve.channel_request_id": undefined,
       "$eve.type": "session",
       "$eve.trigger": "slack",
@@ -154,6 +156,7 @@ describe("buildSessionAttributes", () => {
 
   it("omits the trigger when no channel is on the context", () => {
     const attrs = buildSessionAttributes({
+      agentName: "test-agent",
       inputMessage: "hi",
       serializedContext: {},
     });
@@ -164,6 +167,7 @@ describe("buildSessionAttributes", () => {
 
   it("emits the channel request id when present", () => {
     const attrs = buildSessionAttributes({
+      agentName: "test-agent",
       inputMessage: "hi",
       serializedContext: {
         ...slackChannelCtx,
