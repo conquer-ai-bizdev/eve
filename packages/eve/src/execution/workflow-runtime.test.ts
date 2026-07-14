@@ -281,6 +281,7 @@ describe("createWorkflowRuntime#run", () => {
         "$eve.parent_turn": "turn-1",
         "$eve.root": "root-session",
         "$eve.subagent": "researcher",
+        "$eve.title": "research this",
         "$eve.trigger": "subagent",
         "$eve.type": "subagent",
       },

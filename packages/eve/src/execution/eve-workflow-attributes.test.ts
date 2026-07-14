@@ -183,6 +183,7 @@ describe("buildSubagentRootAttributes", () => {
   it("emits type=subagent with parent, root session, subagent node, and trigger", () => {
     const attrs = buildSubagentRootAttributes({
       identity: { nodeId: "subagents/linear" },
+      inputMessage: "research the delegated account",
       parentCallId: "call_subagent_0",
       parentSessionId: "wrun_parent_subagent",
       parentTurnId: "turn_0",
@@ -198,6 +199,7 @@ describe("buildSubagentRootAttributes", () => {
       "$eve.parent_turn": "turn_0",
       "$eve.root": "wrun_top_level_session",
       "$eve.subagent": "subagents/linear",
+      "$eve.title": "research the delegated account",
       "$eve.trigger": "slack",
     });
   });
@@ -205,6 +207,7 @@ describe("buildSubagentRootAttributes", () => {
   it("emits the channel request id when present", () => {
     const attrs = buildSubagentRootAttributes({
       identity: { nodeId: "subagents/linear" },
+      inputMessage: "research the delegated account",
       parentSessionId: "wrun_parent_subagent",
       rootSessionId: "wrun_top_level_session",
       serializedContext: {

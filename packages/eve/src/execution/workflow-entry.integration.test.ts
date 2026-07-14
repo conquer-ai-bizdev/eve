@@ -552,6 +552,7 @@ describe("workflowEntry integration", () => {
           attributes: normalizeEveAttributes(
             buildSubagentRootAttributes({
               identity: { nodeId: "researcher" },
+              inputMessage: "subagent tag round-trip",
               parentCallId: "call-subagent-1",
               parentSessionId: "parent-session",
               parentTurnId: "turn-parent",
@@ -573,6 +574,7 @@ describe("workflowEntry integration", () => {
 
       expect(attrs["$eve.type"]).toBe("subagent");
       expect(attrs["$eve.parent"]).toBe("parent-session");
+      expect(attrs["$eve.title"]).toBe("subagent tag round-trip");
       expect(attrs["$eve.parent_call"]).toBe("call-subagent-1");
       expect(attrs["$eve.parent_turn"]).toBe("turn-parent");
       expect(attrs["$eve.root"]).toBe("root-session");

@@ -197,6 +197,7 @@ export async function prepareWorkflowRunStart(
         })
       : buildSubagentRootAttributes({
           identity: { nodeId: bundle.nodeId ?? ROOT_RUNTIME_AGENT_NODE_ID },
+          inputMessage: input.title ?? input.input.message,
           parentCallId: parentLineage.callId,
           parentSessionId: parentLineage.sessionId,
           parentTurnId: parentLineage.turnId,

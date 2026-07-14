@@ -228,6 +228,7 @@ export function buildSessionAttributes(input: {
  */
 export function buildSubagentRootAttributes(input: {
   readonly identity: SessionIdentitySummary;
+  readonly inputMessage: unknown;
   readonly parentCallId?: string;
   readonly parentSessionId: string;
   readonly parentTurnId?: string;
@@ -242,6 +243,7 @@ export function buildSubagentRootAttributes(input: {
     "$eve.parent_turn": input.parentTurnId,
     "$eve.root": input.rootSessionId,
     "$eve.subagent": input.identity.nodeId,
+    "$eve.title": deriveSessionTitle(input.inputMessage),
     "$eve.trigger": readChannelKind(input.serializedContext),
   };
 }
