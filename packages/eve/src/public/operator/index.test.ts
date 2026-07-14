@@ -49,6 +49,7 @@ describe("operator workflow API", () => {
       events: { list: vi.fn(async () => page(event)) },
       runs: {
         get: vi.fn(async () => run),
+        list: vi.fn(async () => page(run)),
       },
       steps: { list: vi.fn(async () => page(step)) },
     };
@@ -58,6 +59,12 @@ describe("operator workflow API", () => {
     await expect(client.getRun("run-1")).resolves.toBe(run);
     await expect(
       client.listRuns({
+        pagination: { limit: 10, sortOrder: "desc" },
+        status: "completed",
+      }),
+    ).resolves.toEqual(page(run));
+    await expect(
+      client.listObservedRuns({
         endTime: "2026-07-15T00:00:00.000Z",
         pagination: { limit: 20, sortOrder: "desc" },
         startTime: "2026-07-14T00:00:00.000Z",
@@ -72,6 +79,11 @@ describe("operator workflow API", () => {
     ).resolves.toEqual(page(event));
 
     expect(world.runs.get).toHaveBeenCalledWith("run-1", { resolveData: "none" });
+    expect(world.runs.list).toHaveBeenCalledWith({
+      pagination: { limit: 10, sortOrder: "desc" },
+      resolveData: "none",
+      status: "completed",
+    });
     expect(world.analytics.runs.list).toHaveBeenCalledWith({
       endTime: "2026-07-15T00:00:00.000Z",
       pagination: { limit: 20, sortOrder: "desc" },
@@ -94,9 +106,9 @@ describe("operator workflow API", () => {
 
     const client = await createOperatorWorkflowClient();
 
-    await expect(client.listRuns({ pagination: { limit: 20, sortOrder: "desc" } })).rejects.toThrow(
-      "requires Workflow analytics support",
-    );
+    await expect(
+      client.listObservedRuns({ pagination: { limit: 20, sortOrder: "desc" } }),
+    ).rejects.toThrow("requires Workflow analytics support");
   });
 
   it("cancels an active run and reports before and after status", async () => {

@@ -58,6 +58,7 @@ export interface OperatorPage<T> {
 export interface OperatorPagination {
   readonly cursor?: string;
   readonly limit: number;
+  /** Sorts workflow records by creation time. */
   readonly sortOrder?: "asc" | "desc";
 }
 
@@ -75,6 +76,10 @@ export interface OperatorWorkflowClient {
     readonly runId: string;
   }): Promise<OperatorPage<OperatorWorkflowEventRecord>>;
   listRuns(input: {
+    readonly pagination: OperatorPagination;
+    readonly status?: OperatorWorkflowRunStatus;
+  }): Promise<OperatorPage<OperatorWorkflowRunRecord>>;
+  listObservedRuns(input: {
     /** Optional upper bound for the run activity window. Supply with `startTime`. */
     readonly endTime?: string;
     readonly pagination: OperatorPagination;
@@ -133,6 +138,13 @@ export async function createOperatorWorkflowClient(): Promise<OperatorWorkflowCl
       })) as OperatorPage<OperatorWorkflowEventRecord>;
     },
     async listRuns(input) {
+      return (await world.runs.list({
+        pagination: input.pagination,
+        resolveData: "none",
+        ...(input.status === undefined ? {} : { status: input.status }),
+      })) as OperatorPage<OperatorWorkflowRunRecord>;
+    },
+    async listObservedRuns(input) {
       if (world.analytics === undefined) {
         throw new Error("Eve operator run listing requires Workflow analytics support.");
       }
