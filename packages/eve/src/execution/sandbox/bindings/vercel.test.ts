@@ -537,6 +537,79 @@ describe("createVercelSandbox", () => {
     });
   });
 
+  it("preserves persistent false for a template-backed session", async () => {
+    const templateSandbox = createMockSandbox({ name: "template" });
+    const sessionSandbox = createMockSandbox({ name: "session" });
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(templateSandbox)
+      .mockResolvedValueOnce(sessionSandbox);
+    const sandboxModule = {
+      Sandbox: {
+        create,
+        get: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const backend = createTestVercelSandbox({
+      createOptions: { persistent: false },
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    await backend.prewarm({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      seedFiles: [],
+      templateKey: "template-key",
+    });
+    await backend.create({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "session-key",
+      templateKey: "template-key",
+    });
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[0]?.[0]).toMatchObject({
+      name: "template-key",
+      persistent: false,
+    });
+    expect(create.mock.calls[1]?.[0]).toMatchObject({
+      name: "session-key",
+      persistent: false,
+      source: { snapshotId: "template-snapshot", type: "snapshot" },
+    });
+  });
+
+  it("preserves persistent false for a template-less session", async () => {
+    const sessionSandbox = createMockSandbox({ name: "session" });
+    const create = vi.fn().mockResolvedValueOnce(sessionSandbox);
+    const sandboxModule = {
+      Sandbox: {
+        create,
+        get: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const backend = createTestVercelSandbox({
+      createOptions: { persistent: false },
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    await backend.create({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "session-key",
+      templateKey: null,
+    });
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0]?.[0]).toMatchObject({
+      name: "session-key",
+      persistent: false,
+    });
+    expect(create.mock.calls[0]?.[0]).not.toHaveProperty("source");
+  });
+
+  it("accepts persistent in the public vercel factory options", () => {
+    expect(vercel({ persistent: false }).name).toBe("vercel");
+  });
+
   it("creates a fresh session without reading or snapshotting a template when templateKey is null", async () => {
     const sessionSandbox = createMockSandbox({ name: "session" });
     const create = vi.fn().mockResolvedValueOnce(sessionSandbox);

@@ -400,7 +400,7 @@ function createSessionCreateParams(
     return withBaseSetupNetworkPolicy({
       ...input.createOptions,
       name: sandboxName,
-      persistent: true,
+      persistent: input.createOptions.persistent ?? true,
     });
   }
 
@@ -421,7 +421,7 @@ function createSessionCreateParams(
   return {
     ...sessionCreateOptions,
     name: sandboxName,
-    persistent: true,
+    persistent: input.createOptions.persistent ?? true,
     source: { snapshotId: input.snapshotId, type: "snapshot" as const },
   };
 }
@@ -457,8 +457,9 @@ function createHandle(
         sessionKey,
       };
     },
-    // Session sandboxes are persistent, so the SDK resumes a stopped
-    // sandbox on the next command after reattach.
+    // Stop open compute on server shutdown. Persistent session sandboxes can
+    // later restore provider-persisted state; non-persistent sessions do not
+    // ask Vercel to create that persistence snapshot.
     async shutdown() {
       await stopVercelSandbox(sandbox);
     },
