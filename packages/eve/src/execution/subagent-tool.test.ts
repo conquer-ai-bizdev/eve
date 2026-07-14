@@ -50,6 +50,7 @@ describe("buildSubagentRunInput", () => {
     });
 
     expect(runInput.mode).toBe("task");
+    expect(runInput.title).toBe("Make an issue titled 'Resolve flaky test'.");
   });
 
   it("keeps background children open for later conversation turns", () => {

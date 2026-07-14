@@ -141,6 +141,7 @@ export function buildSubagentRunInput(input: {
       },
     },
     subagentDepth: delegationLimit.nextChildDepth,
+    title: typeof action.input.message === "string" ? action.input.message : undefined,
   };
 
   return { childContinuationToken, runInput };
