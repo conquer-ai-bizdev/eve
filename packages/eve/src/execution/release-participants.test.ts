@@ -156,6 +156,25 @@ describe("release participants", () => {
     expect(fences.get("nested")).toBe("cancelled");
   });
 
+  it("retries release for an already fenced terminal descendant", async () => {
+    const bundle = bundleFixture(calls);
+
+    fences.set("child", "cancelled");
+    fences.set("nested", "cancelled");
+    records.set("child", { ...records.get("child")!, status: "cancelled" });
+    records.set("nested", { ...records.get("nested")!, status: "cancelled" });
+
+    await releaseSessionTree({
+      abortSignal: new AbortController().signal,
+      bundle,
+      cancelRoot: true,
+      reason: "cancelled",
+      sessionId: "child",
+    });
+
+    expect(calls).toEqual(["nested:cancelled:nested", "worker:cancelled:child"]);
+  });
+
   it("continues safe siblings but protects the failed branch and root resource", async () => {
     mocks.cancelTurn.mockRejectedValueOnce(new Error("turn cancellation timed out"));
 
