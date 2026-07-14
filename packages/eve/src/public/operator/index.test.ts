@@ -55,7 +55,12 @@ describe("operator workflow API", () => {
     const client = await createOperatorWorkflowClient();
     await expect(client.getRun("run-1")).resolves.toBe(run);
     await expect(
-      client.listRuns({ pagination: { limit: 20, sortOrder: "desc" }, status: "running" }),
+      client.listRuns({
+        endTime: "2026-07-15T00:00:00.000Z",
+        pagination: { limit: 20, sortOrder: "desc" },
+        startTime: "2026-07-14T00:00:00.000Z",
+        status: "running",
+      }),
     ).resolves.toEqual(page(run));
     await expect(
       client.listSteps({ pagination: { cursor: "next", limit: 100 }, runId: "run-1" }),
@@ -66,8 +71,10 @@ describe("operator workflow API", () => {
 
     expect(world.runs.get).toHaveBeenCalledWith("run-1", { resolveData: "none" });
     expect(world.runs.list).toHaveBeenCalledWith({
+      endTime: "2026-07-15T00:00:00.000Z",
       pagination: { limit: 20, sortOrder: "desc" },
       resolveData: "none",
+      startTime: "2026-07-14T00:00:00.000Z",
       status: "running",
     });
     expect(world.steps.list).toHaveBeenCalledWith({

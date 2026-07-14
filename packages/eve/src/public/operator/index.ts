@@ -46,6 +46,13 @@ export interface OperatorPage<T> {
   readonly cursor: string | null;
   readonly data: readonly T[];
   readonly hasMore: boolean;
+  readonly pageInfo?: {
+    readonly currentLookbackDays: number;
+    readonly currentWindowStart: Date | string;
+    readonly maxLookbackDays: number;
+    readonly maxWindowStart: Date | string;
+    readonly upgradeAvailable: boolean;
+  };
 }
 
 export interface OperatorPagination {
@@ -61,7 +68,11 @@ export interface OperatorWorkflowClient {
     readonly runId: string;
   }): Promise<OperatorPage<OperatorWorkflowEventRecord>>;
   listRuns(input: {
+    /** Optional upper bound for the run activity window. Supply with `startTime`. */
+    readonly endTime?: string;
     readonly pagination: OperatorPagination;
+    /** Optional lower bound for the run activity window. Supply with `endTime`. */
+    readonly startTime?: string;
     readonly status?: string;
   }): Promise<OperatorPage<OperatorWorkflowRunRecord>>;
   listSteps(input: {
@@ -116,8 +127,10 @@ export async function createOperatorWorkflowClient(): Promise<OperatorWorkflowCl
     },
     async listRuns(input) {
       return (await world.runs.list({
+        ...(input.endTime === undefined ? {} : { endTime: input.endTime }),
         pagination: input.pagination,
         resolveData: "none",
+        ...(input.startTime === undefined ? {} : { startTime: input.startTime }),
         ...(input.status === undefined ? {} : { status: input.status }),
       } as never)) as OperatorPage<OperatorWorkflowRunRecord>;
     },
