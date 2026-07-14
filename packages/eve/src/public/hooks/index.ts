@@ -13,3 +13,5 @@ export {
   type StreamEventHooks,
   defineHook,
 } from "#public/definitions/hook.js";
+
+export { type ResourceStatus, recordResourceStatus } from "#public/hooks/resource-status.js";
