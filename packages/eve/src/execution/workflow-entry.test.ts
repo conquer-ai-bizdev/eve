@@ -13,6 +13,7 @@ import { readSubagentControlMessagesStep } from "#features/subagent-supervision/
 import type { TurnControlPayload } from "#execution/turn-control-protocol.js";
 import { workflowEntry } from "#execution/workflow-entry.js";
 import { routeDeliverToChildren } from "#execution/route-child-delivery.js";
+import { releaseParticipantsStep } from "#execution/release-participants-step.js";
 import { dispatchTurnStep, emitTerminalSessionFailureStep } from "#execution/workflow-steps.js";
 
 vi.mock("#compiled/@workflow/core/index.js", () => ({
@@ -46,6 +47,10 @@ vi.mock("./create-session-step.js", () => ({
 
 vi.mock("./route-child-delivery.js", () => ({
   routeDeliverToChildren: vi.fn().mockImplementation(async ({ payloads }) => payloads[0]),
+}));
+
+vi.mock("./release-participants-step.js", () => ({
+  releaseParticipantsStep: vi.fn().mockResolvedValue({ sessions: [] }),
 }));
 
 vi.mock("#features/subagent-supervision/fence-mailbox-step.js", () => ({
@@ -277,6 +282,74 @@ describe("workflowEntry", () => {
     );
   });
 
+  it("releases one root request when its turn parks", async () => {
+    const sessionState = createBaseSessionState();
+    vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
+    installHookMocks({
+      turnControls: [
+        turnResult({
+          action: "park",
+          release: { reason: "completed", turnId: "turn_0" },
+          sessionState,
+        }),
+      ],
+    });
+
+    await workflowEntry({
+      input: { message: "root request" },
+      serializedContext: createSerializedContext(),
+    });
+
+    expect(releaseParticipantsStep).toHaveBeenCalledWith({
+      reason: "completed",
+      scope: "request",
+      serializedContext: { "eve.sessionId": "wrun_test_123" },
+      sessionId: "wrun_test_123",
+      turnId: "turn_0",
+    });
+  });
+
+  it("keeps a waiting child reusable until its root request closes", async () => {
+    const sessionState = createBaseSessionState();
+    vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
+    installHookMocks({
+      turnControls: [
+        turnResult({
+          action: "park",
+          release: { reason: "completed", turnId: "turn_0" },
+          sessionState,
+        }),
+      ],
+    });
+
+    await workflowEntry({
+      input: { message: "child request" },
+      serializedContext: createSerializedContext({ [SubagentDepthKey.name]: 1 }),
+    });
+
+    expect(releaseParticipantsStep).not.toHaveBeenCalled();
+  });
+
+  it("releases a terminal session after accepted control messages drain", async () => {
+    const sessionState = createBaseSessionState();
+    vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
+    installHookMocks({
+      turnControls: [turnResult({ action: "done", output: "ok", sessionState })],
+    });
+
+    await workflowEntry({
+      input: { message: "task" },
+      serializedContext: createSerializedContext(),
+    });
+
+    expect(releaseParticipantsStep).toHaveBeenCalledWith({
+      reason: "completed",
+      scope: "session",
+      serializedContext: { "eve.sessionId": "wrun_test_123" },
+      sessionId: "wrun_test_123",
+    });
+  });
+
   it("notifies a delegated parent once when a turn fails terminally", async () => {
     const sessionState = createBaseSessionState();
     vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
@@ -307,6 +380,12 @@ describe("workflowEntry", () => {
     ).rejects.toThrow("persistent recoverable failure");
 
     expect(emitTerminalSessionFailureStep).toHaveBeenCalledOnce();
+    expect(releaseParticipantsStep).toHaveBeenCalledWith({
+      reason: "failed",
+      scope: "session",
+      serializedContext,
+      sessionId: "wrun_test_123",
+    });
     expect(fireSessionCallbackStep).toHaveBeenCalledOnce();
     expect(notifyDelegatedParentStep).toHaveBeenCalledOnce();
     expect(notifyDelegatedParentStep).toHaveBeenCalledWith({
@@ -778,6 +857,7 @@ function createBaseSessionState(overrides: Partial<DurableSessionState> = {}): D
 function turnResult(input: {
   readonly action: "done" | "park";
   readonly output?: string;
+  readonly release?: { readonly reason: "completed" | "failed"; readonly turnId: string };
   readonly serializedContext?: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
 }): TurnControlPayload {
@@ -787,6 +867,7 @@ function turnResult(input: {
       action: {
         kind: "done",
         output: input.output ?? "",
+        release: input.release,
         serializedContext,
         sessionState: input.sessionState,
       },
@@ -796,6 +877,7 @@ function turnResult(input: {
   return {
     action: {
       kind: "park",
+      release: input.release,
       serializedContext,
       sessionState: input.sessionState,
     },

@@ -1,4 +1,5 @@
 import { getWorld, resumeHook } from "#internal/workflow/runtime.js";
+import { HookNotFoundError } from "#compiled/@workflow/errors/index.js";
 
 import { readSubagentCancellationMailbox } from "#features/subagent-supervision/messages.js";
 import type { ChildLifecycleStatus } from "#public/definitions/subagent-control.js";
@@ -19,6 +20,11 @@ export async function cancelAcknowledgedSubagentTurn(input: {
     await resumeHook(`${input.turn.turnId}:inbox`, { kind: "subagent-control-cancelled" });
   } catch (error) {
     if (TERMINAL_STATUSES.has(await workflowStatus(input.turn.turnRunId))) return;
+    if (HookNotFoundError.is(error)) {
+      await cancelSubagentWorkflowRun(input.turn.turnRunId, input.ancestorSessionId);
+      await waitForTerminalStatus(input);
+      return;
+    }
     throw error;
   }
 
@@ -28,9 +34,7 @@ export async function cancelAcknowledgedSubagentTurn(input: {
     const mailbox = await readSubagentCancellationMailbox(input.sessionId, cursor);
     cursor = mailbox.nextCursor;
     const acknowledged = mailbox.acknowledgements.some(
-      (record) =>
-        record.turnId === input.turn.turnId &&
-        record.sequence > input.fenceSequence,
+      (record) => record.turnId === input.turn.turnId && record.sequence > input.fenceSequence,
     );
     if (acknowledged) {
       await cancelSubagentWorkflowRun(input.turn.turnRunId, input.ancestorSessionId);
@@ -73,7 +77,9 @@ async function waitForTerminalStatus(input: {
 
 async function workflowStatus(runId: string): Promise<ChildLifecycleStatus> {
   const world = await getWorld();
-  const run = (await world.runs.get(runId, { resolveData: "none" })) as { readonly status?: unknown };
+  const run = (await world.runs.get(runId, { resolveData: "none" })) as {
+    readonly status?: unknown;
+  };
   switch (run.status) {
     case "pending":
     case "running":

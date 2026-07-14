@@ -2,7 +2,7 @@ import type { CompiledHookDefinition } from "../compiler/manifest.js";
 import type { CompiledModuleMap } from "../compiler/module-map.js";
 import { expectFunction, expectObjectRecord } from "../internal/authored-module.js";
 import type { HandleMessageStreamEvent } from "../protocol/message.js";
-import type { StreamEventHook } from "../public/definitions/hook.js";
+import type { ReleaseHook, StreamEventHook } from "../public/definitions/hook.js";
 import { toErrorMessage } from "../shared/errors.js";
 import { loadResolvedModuleExport, ResolveAgentError } from "./resolve-helpers.js";
 import type { ResolvedHookDefinition } from "./types.js";
@@ -11,7 +11,7 @@ import type { ResolvedHookDefinition } from "./types.js";
  * Resolves one compiled authored hook into a runtime-owned definition
  * with live handlers reattached from the authored module.
  *
- * The authored shape is `{ events?: { ... } }`.
+ * The authored shape is `{ events?: { ... }, lifecycle?: { release?: ... } }`.
  * Each declared handler must be a function. Any other shape raises a
  * {@link ResolveAgentError} so typos surface at resolve time instead of
  * at first dispatch call.
@@ -34,6 +34,7 @@ export async function resolveHookDefinition(
     );
 
     const events: Record<string, StreamEventHook<HandleMessageStreamEvent>> = {};
+    let release: ReleaseHook | undefined;
 
     const eventsRaw = resolvedRecord.events;
     if (eventsRaw !== undefined) {
@@ -51,7 +52,21 @@ export async function resolveHookDefinition(
       }
     }
 
-    return {
+    const lifecycleRaw = resolvedRecord.lifecycle;
+    if (lifecycleRaw !== undefined) {
+      const lifecycle = expectObjectRecord(
+        lifecycleRaw,
+        describe(definition, "to expose `lifecycle` as an object"),
+      );
+      if (lifecycle.release !== undefined) {
+        release = expectFunction(
+          lifecycle.release,
+          describe(definition, 'to provide a function for "lifecycle.release"'),
+        ) as ReleaseHook;
+      }
+    }
+
+    const resolved: ResolvedHookDefinition = {
       events,
       exportName: definition.exportName,
       logicalPath: definition.logicalPath,
@@ -59,6 +74,8 @@ export async function resolveHookDefinition(
       sourceId: definition.sourceId,
       sourceKind: "module",
     };
+    if (release !== undefined) Object.assign(resolved, { release });
+    return resolved;
   } catch (error) {
     if (error instanceof ResolveAgentError) {
       throw error;

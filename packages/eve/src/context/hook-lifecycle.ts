@@ -1,11 +1,35 @@
 import { getAdapterKind } from "#channel/adapter.js";
 import type { HandleMessageStreamEvent } from "#protocol/message.js";
-import type { HookContext } from "#public/definitions/hook.js";
+import type { HookContext, ReleaseContext, ReleaseSignal } from "#public/definitions/hook.js";
 import type { RuntimeHookRegistry } from "#runtime/hooks/registry.js";
 import { buildCallbackContext } from "#context/build-callback-context.js";
+import { createLogger, logError } from "#internal/logging.js";
 import type { ContextContainer } from "./container.js";
 import { BundleKey, ChannelKey } from "#runtime/sessions/runtime-context-keys.js";
 import { ContinuationTokenKey } from "./keys.js";
+
+const log = createLogger("hook.lifecycle");
+
+/** Dispatches provider-neutral release handlers without changing the run result. */
+export async function dispatchReleaseHooks(input: {
+  readonly context: ReleaseContext;
+  readonly registry: RuntimeHookRegistry;
+  readonly signal: ReleaseSignal;
+}): Promise<void> {
+  for (const entry of input.registry.release) {
+    try {
+      await entry.handler(input.signal, input.context);
+    } catch (error) {
+      logError(log, "release handler failed", error, {
+        agent: input.context.agent.name,
+        nodeId: input.context.agent.nodeId,
+        reason: input.signal.reason,
+        sessionId: input.context.session.id,
+        slug: entry.slug,
+      });
+    }
+  }
+}
 
 /**
  * Fans one runtime stream event out to every matching subscriber.

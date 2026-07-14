@@ -9,7 +9,7 @@ import type { HandleMessageStreamEvent } from "#protocol/message.js";
 import type { ChannelRouteMethod, RouteContext } from "#public/definitions/channel.js";
 import type { RouteHandler, WebSocketRouteHandler } from "#channel/routes.js";
 import type { OutboundAuthFn } from "#public/agents/auth.js";
-import type { StreamEventHook } from "#public/definitions/hook.js";
+import type { ReleaseHook, StreamEventHook } from "#public/definitions/hook.js";
 import type { Approval } from "#public/definitions/approval.js";
 import type { ToolModelOutput } from "#public/definitions/tool.js";
 import type {
@@ -210,6 +210,8 @@ export interface ResolvedHookDefinition extends ResolvedModuleSourceRef {
    * and ignored at dispatch time.
    */
   readonly events: Readonly<Record<string, StreamEventHook<HandleMessageStreamEvent>>>;
+  /** Provider-neutral release handler, when authored under `lifecycle.release`. */
+  readonly release?: ReleaseHook;
 }
 
 /**

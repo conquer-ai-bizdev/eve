@@ -3,6 +3,36 @@ import type { SessionContext } from "./callback-context.js";
 import type { ExactDefinition } from "./exact.js";
 import type { GenericHookDefinition, GenericStreamEventHooks } from "#shared/hook-definition.js";
 
+/** Why eve released one agent runtime from further work. */
+export type ReleaseReason = "cancelled" | "completed" | "failed";
+
+/** Provider-neutral lifecycle signal emitted when an agent runtime can release resources. */
+export interface ReleaseSignal {
+  readonly reason: ReleaseReason;
+}
+
+/** Stable identity available to a release lifecycle handler. */
+export interface ReleaseContext {
+  readonly agent: {
+    readonly name: string;
+    readonly nodeId?: string;
+  };
+  readonly channel: {
+    readonly kind?: string;
+  };
+  readonly session: {
+    readonly id: string;
+  };
+}
+
+/** Side-effect-only handler for an agent resource-release boundary. */
+export type ReleaseHook = (signal: ReleaseSignal, ctx: ReleaseContext) => void | Promise<void>;
+
+/** Lifecycle subscribers an authored hook file may declare. */
+export interface LifecycleHooks {
+  readonly release?: ReleaseHook;
+}
+
 /**
  * Every hook handler receives this context.
  *
@@ -40,19 +70,22 @@ export type StreamEventHooks = GenericStreamEventHooks<HandleMessageStreamEvent,
 /**
  * Public hook definition authored in `agent/hooks/*.ts`.
  *
- * Hook files declare stream-event subscribers (under `events:`) that
- * fire after eve has accepted and durably recorded each event.
- * Handlers are observe-only: they cannot inject model context. To
- * contribute runtime model messages, use `defineDynamic` +
- * `defineInstructions` in `agent/instructions/`.
+ * Hook files declare stream-event subscribers under `events:` and optional
+ * resource-release behavior under `lifecycle.release`. Event handlers fire
+ * after eve has accepted and durably recorded each event. All handlers are
+ * side-effect-only: they cannot inject model context. To contribute runtime
+ * model messages, use `defineDynamic` + `defineInstructions` in
+ * `agent/instructions/`.
  */
-export type HookDefinition = GenericHookDefinition<HandleMessageStreamEvent, HookContext>;
+export type HookDefinition = GenericHookDefinition<HandleMessageStreamEvent, HookContext> & {
+  readonly lifecycle?: LifecycleHooks;
+};
 
 /**
  * Identity-with-types helper. Returns the passed definition unchanged
  * (identity at runtime) while preserving literal inference and rejecting
- * any authored key outside `events` as a compile-time error. Authors export
- * `defineHook({ events: { "session.started": (event, ctx) => { ... } } })`
+ * any authored key outside `events` and `lifecycle` as a compile-time error.
+ * Authors export `defineHook({ events: { ... }, lifecycle: { release() {} } })`
  * and receive a typed {@link HookDefinition}.
  */
 export function defineHook<T extends HookDefinition>(

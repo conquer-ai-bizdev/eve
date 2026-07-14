@@ -4,7 +4,7 @@ import { createRuntimeHookRegistry } from "#runtime/hooks/registry.js";
 import type { ResolvedHookDefinition } from "#runtime/types.js";
 import type { HandleMessageStreamEvent } from "#protocol/message.js";
 import { ContextContainer, contextStorage } from "./container.js";
-import { dispatchStreamEventHooks } from "./hook-lifecycle.js";
+import { dispatchReleaseHooks, dispatchStreamEventHooks } from "./hook-lifecycle.js";
 import {
   BundleKey,
   ChannelKey,
@@ -46,6 +46,7 @@ function hook(slug: string, hooks: Partial<ResolvedHookDefinition>): ResolvedHoo
     events: hooks.events ?? {},
     exportName: undefined,
     logicalPath: `hooks/${slug}.ts`,
+    release: hooks.release,
     slug,
     sourceId: `hooks/${slug}.ts`,
     sourceKind: "module",
@@ -100,5 +101,36 @@ describe("dispatchStreamEventHooks", () => {
         }),
       ),
     ).rejects.toThrow(/event hook boom/);
+  });
+});
+
+describe("dispatchReleaseHooks", () => {
+  it("passes stable identity and isolates handler failures", async () => {
+    const calls: string[] = [];
+    const registry = createRuntimeHookRegistry([
+      hook("broken", {
+        release: async () => {
+          calls.push("broken");
+          throw new Error("release boom");
+        },
+      }),
+      hook("cleanup", {
+        release: async (signal, ctx) => {
+          calls.push(`${signal.reason}:${ctx.agent.name}:${ctx.session.id}`);
+        },
+      }),
+    ]);
+
+    await dispatchReleaseHooks({
+      context: {
+        agent: { name: "worker", nodeId: "subagents/worker" },
+        channel: { kind: "subagent" },
+        session: { id: "child-1" },
+      },
+      registry,
+      signal: { reason: "completed" },
+    });
+
+    expect(calls).toEqual(["broken", "completed:worker:child-1"]);
   });
 });

@@ -4,6 +4,7 @@ import { sendTurnControlStep } from "#execution/turn-control-protocol.js";
 import type { DurableSessionState } from "#execution/durable-session-store.js";
 import type { TurnStepInput } from "#execution/durable-session-migrations/turn-workflow.js";
 import type { TokenUsage } from "#shared/token-usage.js";
+import type { TurnReleaseBoundary } from "#execution/next-driver-action.js";
 
 interface TurnTransition {
   readonly serializedContext?: Record<string, unknown>;
@@ -15,11 +16,13 @@ type TurnTerminalAction =
       readonly isError?: boolean;
       readonly kind: "done";
       readonly output: unknown;
+      readonly release?: TurnReleaseBoundary;
       readonly usage?: TokenUsage;
     }
   | {
       readonly authorizationNames?: readonly string[];
       readonly kind: "park";
+      readonly release?: TurnReleaseBoundary;
     };
 
 /** Owns the mutable durable state cursor for one active turn workflow. */

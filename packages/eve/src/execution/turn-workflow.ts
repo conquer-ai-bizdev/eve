@@ -21,10 +21,7 @@ import { runProxySubagentEventStep } from "#execution/subagent-event-proxy-step.
 import { TurnExecutionCursor } from "#execution/turn-execution-cursor.js";
 import { resolveWorkflowCallbackBaseUrl } from "#execution/workflow-callback-url.js";
 import { normalizeSerializableError } from "#execution/workflow-errors.js";
-import {
-  acknowledgeSubagentTurnCancellationStep,
-  turnStep,
-} from "#execution/workflow-steps.js";
+import { acknowledgeSubagentTurnCancellationStep, turnStep } from "#execution/workflow-steps.js";
 import { resolveRuntimeActionResultsForKeys } from "#harness/runtime-actions.js";
 import type { RuntimeActionResult } from "#runtime/actions/types.js";
 
@@ -85,6 +82,7 @@ async function runTurnOwnedWorkflow(input: TurnWorkflowInput): Promise<void> {
             kind: "done",
             output: result.output ?? "",
             isError: result.isError,
+            release: result.release,
             usage: result.usage,
           },
           bufferedDeliveries,
@@ -142,6 +140,10 @@ async function runTurnOwnedWorkflow(input: TurnWorkflowInput): Promise<void> {
           {
             authorizationNames: result.authorizationNames,
             kind: "park",
+            release:
+              result.hasPendingAuthorization || result.hasPendingInputBatch
+                ? undefined
+                : result.release,
           },
           bufferedDeliveries,
         );
@@ -265,6 +267,7 @@ async function runLegacyTurnWorkflow(input: TurnWorkflowInput): Promise<void> {
               kind: "done",
               output: result.output ?? "",
               isError: result.isError,
+              release: result.release,
               serializedContext: result.serializedContext,
               sessionState: result.sessionState,
               usage: result.usage,
@@ -314,6 +317,10 @@ async function runLegacyTurnWorkflow(input: TurnWorkflowInput): Promise<void> {
                 serializedContext: result.serializedContext,
                 sessionState: result.sessionState,
                 authorizationNames: result.authorizationNames,
+                release:
+                  result.hasPendingAuthorization || result.hasPendingInputBatch
+                    ? undefined
+                    : result.release,
               };
 
         await sendTurnControlStep({

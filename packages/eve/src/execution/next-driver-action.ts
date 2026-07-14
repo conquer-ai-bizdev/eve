@@ -12,7 +12,14 @@
  * strips unknown fields.
  */
 import type { DurableSessionState } from "#execution/durable-session-store.js";
+import type { ReleaseReason } from "#public/definitions/hook.js";
 import type { TokenUsage } from "#shared/token-usage.js";
+
+/** Release boundary observed at the end of one completed or failed turn. */
+export interface TurnReleaseBoundary {
+  readonly reason: Extract<ReleaseReason, "completed" | "failed">;
+  readonly turnId: string;
+}
 
 /** Discriminated union the driver workflow body dispatches on. */
 export type NextDriverAction =
@@ -20,6 +27,7 @@ export type NextDriverAction =
       readonly kind: "done";
       readonly output: unknown;
       readonly isError?: boolean;
+      readonly release?: TurnReleaseBoundary;
       readonly sessionState: DurableSessionState;
       readonly serializedContext: Record<string, unknown>;
       /** Session-total token usage spent by the completed session. */
@@ -30,6 +38,7 @@ export type NextDriverAction =
       readonly sessionState: DurableSessionState;
       readonly serializedContext: Record<string, unknown>;
       readonly authorizationNames?: readonly string[];
+      readonly release?: TurnReleaseBoundary;
     }
   | {
       readonly kind: "dispatch-runtime-actions";

@@ -65,6 +65,7 @@ describe("turnWorkflow", () => {
     vi.mocked(turnStep).mockResolvedValueOnce({
       action: "done",
       output: "ok",
+      release: { reason: "completed", turnId: "turn-completed" },
       serializedContext: { state: "done" },
       sessionState,
     });
@@ -82,6 +83,7 @@ describe("turnWorkflow", () => {
       action: {
         kind: "done",
         output: "ok",
+        release: { reason: "completed", turnId: "turn-completed" },
         serializedContext: { state: "done" },
         sessionState,
       },
@@ -160,6 +162,7 @@ describe("turnWorkflow", () => {
       action: "park",
       hasPendingAuthorization: true,
       hasPendingInputBatch: false,
+      release: { reason: "completed", turnId: "turn-awaiting-auth" },
       serializedContext: { state: "needs-auth" },
       sessionState,
     });
@@ -175,6 +178,7 @@ describe("turnWorkflow", () => {
       expect.objectContaining({
         action: expect.objectContaining({
           kind: "park",
+          release: undefined,
           sessionState,
         }),
         kind: "turn-result",
@@ -209,16 +213,19 @@ describe("turnWorkflow", () => {
 
   it("parks for pending input when the channel supports input requests", async () => {
     const sessionState = createSessionState();
+    installInbox([]);
     vi.mocked(turnStep).mockResolvedValueOnce({
       action: "park",
       hasPendingAuthorization: false,
       hasPendingInputBatch: true,
+      release: { reason: "completed", turnId: "turn-awaiting-input" },
       serializedContext: { state: "pending-input" },
       sessionState,
     });
 
     const { input } = createInput({
       capabilities: { requestInput: true },
+      driverCapabilities: { turnInbox: true },
       mode: "task",
       sessionState,
     });
@@ -229,6 +236,7 @@ describe("turnWorkflow", () => {
       expect.objectContaining({
         action: expect.objectContaining({
           kind: "park",
+          release: undefined,
           serializedContext: { state: "pending-input" },
         }),
         kind: "turn-result",

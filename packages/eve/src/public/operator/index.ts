@@ -6,6 +6,10 @@ import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
+import { releaseSessionTree } from "#execution/release-participants.js";
+import { createLogger, logError } from "#internal/logging.js";
+
+const log = createLogger("operator");
 
 export interface OperatorWorkflowRunRecord {
   readonly attributes?: Record<string, string>;
@@ -138,22 +142,24 @@ export async function createOperatorWorkflowClient(): Promise<OperatorWorkflowCl
       })) as OperatorPage<OperatorWorkflowEventRecord>;
     },
     async listRuns(input) {
-      return (await world.runs.list({
+      const query = {
         pagination: input.pagination,
         resolveData: "none",
-        ...(input.status === undefined ? {} : { status: input.status }),
-      })) as OperatorPage<OperatorWorkflowRunRecord>;
+      } as const;
+      if (input.status !== undefined) Object.assign(query, { status: input.status });
+      return (await world.runs.list(query)) as OperatorPage<OperatorWorkflowRunRecord>;
     },
     async listObservedRuns(input) {
       if (world.analytics === undefined) {
         throw new Error("Eve operator run listing requires Workflow analytics support.");
       }
-      return (await world.analytics.runs.list({
-        ...(input.endTime === undefined ? {} : { endTime: input.endTime }),
+      const query = {
         pagination: input.pagination,
-        ...(input.startTime === undefined ? {} : { startTime: input.startTime }),
-        ...(input.status === undefined ? {} : { status: input.status }),
-      })) as OperatorPage<OperatorWorkflowRunRecord>;
+      };
+      if (input.endTime !== undefined) Object.assign(query, { endTime: input.endTime });
+      if (input.startTime !== undefined) Object.assign(query, { startTime: input.startTime });
+      if (input.status !== undefined) Object.assign(query, { status: input.status });
+      return (await world.analytics.runs.list(query)) as OperatorPage<OperatorWorkflowRunRecord>;
     },
     async listSteps(input) {
       return (await world.steps.list({
@@ -168,10 +174,23 @@ export async function createOperatorWorkflowClient(): Promise<OperatorWorkflowCl
 /** Cancels a workflow run unless it is already terminal. */
 export async function cancelOperatorWorkflowRun(
   runId: string,
+  appRoot = process.cwd(),
 ): Promise<OperatorWorkflowCancellationResult> {
   const run = getRun(runId);
   const statusBefore = await readRunStatus(run);
   if (!isTerminalRunStatus(statusBefore)) {
+    try {
+      const { bundle } = await loadOperatorRuntime(appRoot);
+      await releaseSessionTree({
+        abortSignal: AbortSignal.timeout(30_000),
+        bundle,
+        cancelRoot: false,
+        reason: "cancelled",
+        sessionId: runId,
+      });
+    } catch (error) {
+      logError(log, "release before operator cancellation failed", error, { runId });
+    }
     await run.cancel();
   }
   return {
@@ -230,10 +249,11 @@ export async function runOperatorSandboxCommand(
     sessionId: options.sessionId,
     turn: undefined,
   } as never);
-  const nodeBundle = await getCompiledRuntimeAgentBundle({
+  const bundleOptions = {
     compiledArtifactsSource,
-    ...(node.nodeId === "__root__" ? {} : { nodeId: node.nodeId }),
-  });
+  };
+  if (node.nodeId !== "__root__") Object.assign(bundleOptions, { nodeId: node.nodeId });
+  const nodeBundle = await getCompiledRuntimeAgentBundle(bundleOptions);
   context.set(BundleKey, nodeBundle);
 
   const sandboxAccess = await ensureSandboxAccess({

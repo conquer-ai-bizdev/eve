@@ -62,6 +62,19 @@ describe("resolveHookDefinition", () => {
     expect(Object.keys(resolved.events).sort()).toEqual(["session.started", "turn.completed"]);
   });
 
+  it("attaches a provider-neutral release lifecycle handler", async () => {
+    const definition = buildDefinition({ slug: "cleanup" });
+    const release = async () => undefined;
+    const moduleMap = buildModuleMap(definition.sourceId, {
+      default: { lifecycle: { release } },
+    });
+
+    const resolved = await resolveHookDefinition(definition, moduleMap, undefined);
+
+    expect(resolved.release).toBe(release);
+    expect(resolved.events).toEqual({});
+  });
+
   it("accepts a hook with an empty export (no events)", async () => {
     const definition = buildDefinition({ slug: "noop" });
     const moduleMap = buildModuleMap(definition.sourceId, {
@@ -84,6 +97,17 @@ describe("resolveHookDefinition", () => {
 
     await expect(resolveHookDefinition(definition, moduleMap, undefined)).rejects.toThrow(
       /events\.session\.started/,
+    );
+  });
+
+  it("rejects a non-function release lifecycle handler", async () => {
+    const definition = buildDefinition({ slug: "broken-release" });
+    const moduleMap = buildModuleMap(definition.sourceId, {
+      default: { lifecycle: { release: true } },
+    });
+
+    await expect(resolveHookDefinition(definition, moduleMap, undefined)).rejects.toThrow(
+      /lifecycle\.release/,
     );
   });
 });

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getCompiledRuntimeAgentBundle: vi.fn(),
   getRun: vi.fn(),
   getWorld: vi.fn(),
+  releaseSessionTree: vi.fn(async () => ({ sessions: [] })),
 }));
 
 vi.mock("#internal/workflow/runtime.js", () => ({
@@ -24,6 +25,9 @@ vi.mock("#runtime/compiled-artifacts-source.js", () => ({
 }));
 vi.mock("#runtime/sessions/compiled-agent-cache.js", () => ({
   getCompiledRuntimeAgentBundle: mocks.getCompiledRuntimeAgentBundle,
+}));
+vi.mock("#execution/release-participants.js", () => ({
+  releaseSessionTree: mocks.releaseSessionTree,
 }));
 
 import {
@@ -122,6 +126,7 @@ describe("operator workflow API", () => {
         return Promise.resolve(status);
       },
     });
+    mocks.getCompiledRuntimeAgentBundle.mockResolvedValue({ graph: graphFixture() });
 
     await expect(cancelOperatorWorkflowRun("run-1")).resolves.toEqual({
       runId: "run-1",
@@ -129,6 +134,9 @@ describe("operator workflow API", () => {
       statusBefore: "running",
     });
     expect(cancel).toHaveBeenCalledOnce();
+    expect(mocks.releaseSessionTree).toHaveBeenCalledWith(
+      expect.objectContaining({ cancelRoot: false, reason: "cancelled", sessionId: "run-1" }),
+    );
   });
 
   it("leaves a terminal run unchanged", async () => {

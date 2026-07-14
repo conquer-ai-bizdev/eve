@@ -23,6 +23,7 @@ import { dispatchAndAwaitTurn } from "#execution/turn-dispatch.js";
 import { normalizeSerializableError } from "#execution/workflow-errors.js";
 import { createSessionStep } from "#execution/create-session-step.js";
 import { emitTerminalSessionFailureStep } from "#execution/workflow-steps.js";
+import { releaseParticipantsStep } from "#execution/release-participants-step.js";
 import { fireSessionCallbackStep } from "#execution/session-callback-step.js";
 import { closeHookIterator, disposeHook } from "#execution/hook-ownership.js";
 import {
@@ -123,6 +124,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
         requestId: readChannelRequestId(input.serializedContext),
       },
       mode,
+      rootSession: subagentDepth === undefined || subagentDepth === 0,
       serializedContext: input.serializedContext,
       sessionState,
     });
@@ -135,6 +137,12 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
       error: normalizeSerializableError(error),
       parentWritable: driverWritable,
       serializedContext: input.serializedContext,
+    });
+    await releaseParticipantsStep({
+      reason: "failed",
+      scope: "session",
+      serializedContext: input.serializedContext,
+      sessionId,
     });
     await fireSessionCallbackStep({
       error: normalizeSerializableError(error),
@@ -154,6 +162,7 @@ async function runDriverLoop(input: {
   readonly driverWritable: WritableStream<Uint8Array>;
   readonly initialInput: HookPayload;
   readonly mode: RunMode;
+  readonly rootSession: boolean;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
 }): Promise<WorkflowEntryResult> {
@@ -247,6 +256,12 @@ async function runDriverLoop(input: {
           continue;
         }
 
+        await releaseParticipantsStep({
+          reason: action.isError === true ? "failed" : "completed",
+          scope: "session",
+          serializedContext: action.serializedContext,
+          sessionId: action.sessionState.sessionId,
+        });
         return await finalizeDone({
           action,
           driverWritable: input.driverWritable,
@@ -267,6 +282,16 @@ async function runDriverLoop(input: {
             "session) or `send()` must be called with an explicit " +
             "continuationToken.",
         );
+      }
+
+      if (input.rootSession && action.release !== undefined) {
+        await releaseParticipantsStep({
+          reason: action.release.reason,
+          scope: "request",
+          serializedContext: action.serializedContext,
+          sessionId: action.sessionState.sessionId,
+          turnId: action.release.turnId,
+        });
       }
 
       // Rekey to the parked turn's continuation token before awaiting the next

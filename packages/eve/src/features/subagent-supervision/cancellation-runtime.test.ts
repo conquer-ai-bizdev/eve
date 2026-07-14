@@ -6,6 +6,7 @@ import {
 } from "#features/subagent-supervision/cancellation-runtime.js";
 import { getWorld, resumeHook } from "#internal/workflow/runtime.js";
 import { readSubagentCancellationMailbox } from "#features/subagent-supervision/messages.js";
+import { HookNotFoundError } from "#compiled/@workflow/errors/index.js";
 
 vi.mock("#internal/workflow/runtime.js", () => ({ getWorld: vi.fn(), resumeHook: vi.fn() }));
 vi.mock("#features/subagent-supervision/messages.js", () => ({
@@ -26,7 +27,9 @@ describe("subagent cancellation runtime", () => {
   });
 
   it("cancels an active turn only after its post-fence acknowledgement", async () => {
-    getRun.mockResolvedValueOnce({ status: "running" }).mockResolvedValueOnce({ status: "running" });
+    getRun
+      .mockResolvedValueOnce({ status: "running" })
+      .mockResolvedValueOnce({ status: "running" });
     createEvent.mockImplementation(async () => {
       getRun.mockResolvedValue({ status: "cancelled" });
     });
@@ -71,6 +74,49 @@ describe("subagent cancellation runtime", () => {
 
     expect(readSubagentCancellationMailbox).not.toHaveBeenCalled();
     expect(resumeHook).not.toHaveBeenCalled();
+    expect(createEvent).not.toHaveBeenCalled();
+  });
+
+  it("directly cancels a running legacy turn when no control inbox exists", async () => {
+    getRun
+      .mockResolvedValueOnce({ status: "running" })
+      .mockResolvedValueOnce({ status: "running" });
+    createEvent.mockImplementation(async () => {
+      getRun.mockResolvedValue({ status: "cancelled" });
+    });
+    vi.mocked(resumeHook).mockRejectedValueOnce(new HookNotFoundError("turn-legacy:inbox"));
+
+    await cancelAcknowledgedSubagentTurn({
+      abortSignal: new AbortController().signal,
+      ancestorSessionId: "ancestor",
+      fenceSequence: 2,
+      sessionId: "child",
+      turn: { turnId: "turn-legacy", turnRunId: "turn-run-legacy" },
+    });
+
+    expect(createEvent).toHaveBeenCalledWith("turn-run-legacy", {
+      eventData: { cancelReason: "Stopped by ancestor ancestor" },
+      eventType: "run_cancelled",
+      specVersion: 1,
+    });
+    expect(readSubagentCancellationMailbox).not.toHaveBeenCalled();
+    await expect(getRun("turn-run-legacy")).resolves.toEqual({ status: "cancelled" });
+  });
+
+  it("does not force-cancel a turn when inbox delivery fails for another reason", async () => {
+    getRun.mockResolvedValue({ status: "running" });
+    vi.mocked(resumeHook).mockRejectedValueOnce(new Error("workflow transport failed"));
+
+    await expect(
+      cancelAcknowledgedSubagentTurn({
+        abortSignal: new AbortController().signal,
+        ancestorSessionId: "ancestor",
+        fenceSequence: 2,
+        sessionId: "child",
+        turn: { turnId: "turn-1", turnRunId: "turn-run" },
+      }),
+    ).rejects.toThrow("workflow transport failed");
+
     expect(createEvent).not.toHaveBeenCalled();
   });
 

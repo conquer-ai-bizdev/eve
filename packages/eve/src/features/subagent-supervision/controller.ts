@@ -2,30 +2,22 @@ import { getWorld, getRun, type Run } from "#internal/workflow/runtime.js";
 
 import { mintSubagentContinuationToken } from "#execution/session.js";
 import { SUBAGENT_MAX_WAIT_TIMEOUT_MS } from "#features/subagent-supervision/capability.js";
-import {
-  fenceSubagentControlMailbox,
-  readSubagentControlLineageMailbox,
-  resolveSubagentWaitState,
-} from "#features/subagent-supervision/messages.js";
+import { resolveSubagentWaitState } from "#features/subagent-supervision/messages.js";
 import { controlMessageId } from "#features/subagent-supervision/message-format.js";
-import { resolveDirectSubagentLineage } from "#features/subagent-supervision/lineage.js";
-import { resolveSessionTurnLineage } from "#features/subagent-supervision/turn-lineage.js";
 import {
   deliverSubagentControlMessage,
   subagentDeliveryLockToken,
 } from "#features/subagent-supervision/delivery-coordinator.js";
-import {
-  cancelAcknowledgedSubagentTurn,
-  cancelSubagentWorkflowRun,
-} from "#features/subagent-supervision/cancellation-runtime.js";
+import { releaseSessionTree } from "#execution/release-participants.js";
 import {
   decodeCursor,
   encodeCursor,
   initialCursor,
   normalizeCursor,
 } from "#features/subagent-supervision/cursor.js";
-import { cleanupCancelledSubagentSandbox } from "#features/subagent-supervision/sandbox-cleanup.js";
 import { readFiniteEvents } from "#features/subagent-supervision/session-stream.js";
+import type { RuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
+import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 import type {
   ChildCancelResult,
   ChildCancelSessionResult,
@@ -49,6 +41,7 @@ interface WorkflowRunRecord {
 interface ControllerOptions {
   readonly abortSignal: AbortSignal;
   readonly callerSessionId: string;
+  readonly compiledArtifactsSource?: RuntimeCompiledArtifactsSource;
 }
 
 const TERMINAL_STATUSES = new Set<ChildLifecycleStatus>(["completed", "failed", "cancelled"]);
@@ -112,7 +105,11 @@ function createChildSessionHandle(
 
     async cancel(): Promise<ChildCancelResult> {
       await authorizeDescendant(options.callerSessionId, options.childSessionId);
-      return await cancelDescendantTree(options.childSessionId, options.abortSignal);
+      return await cancelDescendantTree(
+        options.childSessionId,
+        options.abortSignal,
+        options.compiledArtifactsSource,
+      );
     },
   };
 }
@@ -144,7 +141,7 @@ async function buildSnapshot(
   const waitingEvent = [...events].reverse().find((event) => event.type === "session.waiting");
   const latestReceived = [...events].reverse().find((event) => event.type === "message.received");
 
-  return {
+  const snapshot: ChildSnapshot = {
     schemaVersion: 1,
     agent: {
       id: record.attributes["$eve.subagent"] || childSessionId,
@@ -152,18 +149,21 @@ async function buildSnapshot(
     },
     childSessionId,
     events,
-    ...(history.omittedBeforeIndex === undefined
-      ? {}
-      : { omittedBeforeIndex: history.omittedBeforeIndex }),
     nextCursor: encodeCursor(nextCursor),
     status,
-    ...(terminal === undefined ? {} : { terminal }),
-    ...(waitingEvent === undefined ||
-    terminal !== undefined ||
-    (latestReceived !== undefined && latestReceived.index > waitingEvent.index)
-      ? {}
-      : { waiting: { reason: "next-user-message" as const } }),
   };
+  if (history.omittedBeforeIndex !== undefined) {
+    Object.assign(snapshot, { omittedBeforeIndex: history.omittedBeforeIndex });
+  }
+  if (terminal !== undefined) Object.assign(snapshot, { terminal });
+  if (
+    waitingEvent !== undefined &&
+    terminal === undefined &&
+    (latestReceived === undefined || latestReceived.index <= waitingEvent.index)
+  ) {
+    Object.assign(snapshot, { waiting: { reason: "next-user-message" as const } });
+  }
+  return snapshot;
 }
 
 async function terminalResult(
@@ -192,7 +192,8 @@ async function terminalResult(
     };
   }
   if (status === "cancelled") {
-    return { outcome: "cancelled", ...(error === undefined ? {} : { error }) };
+    if (error === undefined) return { outcome: "cancelled" };
+    return { outcome: "cancelled", error };
   }
   return undefined;
 }
@@ -340,47 +341,24 @@ async function getWorkflowRunRecord(runId: string): Promise<WorkflowRunRecord> {
 async function cancelDescendantTree(
   childSessionId: string,
   abortSignal: AbortSignal,
+  compiledArtifactsSource?: RuntimeCompiledArtifactsSource,
 ): Promise<ChildCancelResult> {
-  let ordered: readonly FencedSession[] | undefined;
-  for (let attempt = 0; attempt < 300; attempt += 1) {
-    const discovered = await discoverFencedDescendantTree(childSessionId);
-    if (discovered.unresolved.length === 0) {
-      ordered = discovered.ordered;
-      break;
-    }
-    await delay(100, abortSignal);
-    if (abortSignal.aborted) throw new Error(`Stopping ${childSessionId} was aborted`);
-  }
-  if (ordered === undefined) {
-    throw new Error(`Descendant lineage for ${childSessionId} did not settle before cancellation`);
-  }
-
-  const sessions: ChildCancelSessionResult[] = [];
-  for (const session of ordered) {
-    for (const turn of session.turns) {
-      await cancelAcknowledgedSubagentTurn({
-        abortSignal,
-        ancestorSessionId: childSessionId,
-        fenceSequence: session.fenceSequence,
-        sessionId: session.sessionId,
-        turn,
-      });
-    }
-
-    const statusBefore = (await getWorkflowRunRecord(session.sessionId)).status;
-    if (!TERMINAL_STATUSES.has(statusBefore)) {
-      await cancelSubagentWorkflowRun(session.sessionId, childSessionId);
-    }
-    const statusAfter = (await getWorkflowRunRecord(session.sessionId)).status;
-    if (statusAfter === "cancelled") {
-      await cleanupCancelledSubagentSandbox(session.sessionId);
-    }
-    sessions.push({
-      childSessionId: session.sessionId,
-      statusAfter,
-      statusBefore,
-    });
-  }
+  const bundle =
+    compiledArtifactsSource === undefined
+      ? undefined
+      : await getCompiledRuntimeAgentBundle({ compiledArtifactsSource });
+  const released = await releaseSessionTree({
+    abortSignal,
+    bundle,
+    cancelRoot: true,
+    reason: "cancelled",
+    sessionId: childSessionId,
+  });
+  const sessions: ChildCancelSessionResult[] = released.sessions.map((session) => ({
+    childSessionId: session.sessionId,
+    statusAfter: session.statusAfter,
+    statusBefore: session.statusBefore,
+  }));
   return { sessions };
 }
 
@@ -397,51 +375,6 @@ async function delay(timeoutMs: number, abortSignal: AbortSignal): Promise<void>
     };
     abortSignal.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-interface FencedSession {
-  readonly fenceSequence: number;
-  readonly sessionId: string;
-  readonly turns: readonly {
-    readonly turnId: string;
-    readonly turnRunId: string;
-  }[];
-}
-
-async function discoverFencedDescendantTree(rootSessionId: string): Promise<{
-  readonly ordered: readonly FencedSession[];
-  readonly unresolved: readonly string[];
-}> {
-  const ordered: FencedSession[] = [];
-  const unresolved: string[] = [];
-  const visited = new Set<string>();
-
-  const visit = async (sessionId: string): Promise<void> => {
-    if (visited.has(sessionId)) return;
-    visited.add(sessionId);
-    await fenceSubagentControlMailbox(sessionId, "cancelled");
-
-    const mailbox = await readSubagentControlLineageMailbox(sessionId);
-    if (mailbox.fence === undefined) {
-      unresolved.push(`${sessionId}:fence`);
-      return;
-    }
-    const lineage = resolveDirectSubagentLineage({
-      mailbox,
-      parentSessionId: sessionId,
-    });
-    const turns = resolveSessionTurnLineage(sessionId, mailbox);
-    unresolved.push(...lineage.unresolved, ...turns.unresolved);
-    for (const childId of lineage.children) await visit(childId);
-    ordered.push({
-      fenceSequence: mailbox.fence.sequence,
-      sessionId,
-      turns: turns.turnRuns,
-    });
-  };
-
-  await visit(rootSessionId);
-  return { ordered, unresolved };
 }
 
 function stringRecord(value: unknown): Record<string, string> {

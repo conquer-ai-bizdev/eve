@@ -41,6 +41,7 @@ import {
   turnWorkflowReference,
   workflowEntryReference,
 } from "#execution/workflow-runtime.js";
+import { createTurnCompletedEvent, createTurnFailedEvent } from "#protocol/message.js";
 
 vi.mock("./durable-session-store.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./durable-session-store.js")>();
@@ -610,6 +611,46 @@ describe("dispatchRuntimeActionsStep", () => {
 });
 
 describe("turnStep", () => {
+  it.each([
+    {
+      event: createTurnCompletedEvent({ sequence: 3, turnId: "turn-completed" }),
+      expected: { reason: "completed", turnId: "turn-completed" },
+    },
+    {
+      event: createTurnFailedEvent({
+        code: "MODEL_FAILED",
+        message: "model failed",
+        sequence: 4,
+        turnId: "turn-failed",
+      }),
+      expected: { reason: "failed", turnId: "turn-failed" },
+    },
+  ] as const)(
+    "returns the $expected.reason request release boundary",
+    async ({ event, expected }) => {
+      const session = createStubSession();
+      installSessionStoreMocks([session]);
+      vi.mocked(createExecutionNodeStep).mockImplementation(({ handleEvent }) => {
+        return async (stepSession): Promise<StepResult> => {
+          await handleEvent?.(event);
+          return { next: null, session: stepSession };
+        };
+      });
+
+      const result = await turnStep({
+        input: {
+          kind: "deliver",
+          payloads: [{ message: "finish this request" }],
+        },
+        parentWritable: createTestWritable(),
+        serializedContext: createSerializedContext(),
+        sessionState: createStubSessionState(),
+      });
+
+      expect(result).toMatchObject({ action: "park", release: expected });
+    },
+  );
+
   it("reads the durable session from normalized turn-step input", async () => {
     const session = createStubSession({
       continuationToken: "http:turn-step",

@@ -25,6 +25,7 @@ import { getTurnUsageState, toUsage } from "#harness/turn-tag-state.js";
 import type { TokenUsage } from "#shared/token-usage.js";
 import type { JsonObject } from "#shared/json.js";
 import type { RunMode } from "#shared/run-mode.js";
+import type { TurnReleaseBoundary } from "#execution/next-driver-action.js";
 import { getRuntimeActionRequestKey } from "#runtime/actions/keys.js";
 import { createLogger, formatError } from "#internal/logging.js";
 import {
@@ -92,6 +93,7 @@ export type DurableStepResult =
       readonly action: "continue" | "done";
       readonly output?: unknown;
       readonly isError?: boolean;
+      readonly release?: TurnReleaseBoundary;
       readonly serializedContext: Record<string, unknown>;
       readonly sessionState: DurableSessionState;
       /** Session-total token usage; set on `done` when the session spent any. */
@@ -103,6 +105,7 @@ export type DurableStepResult =
       readonly hasPendingAuthorization: boolean;
       readonly hasPendingInputBatch: boolean;
       readonly pendingRuntimeActionKeys?: readonly string[];
+      readonly release?: TurnReleaseBoundary;
       readonly serializedContext: Record<string, unknown>;
       readonly sessionState: DurableSessionState;
     }
@@ -275,6 +278,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   const dynamicInstructionsResolvers = bundle.resolvedAgent.dynamicInstructionsResolvers ?? [];
   const dynamicSkillResolvers = bundle.resolvedAgent.dynamicSkillResolvers ?? [];
   const dynamicToolResolvers = bundle.resolvedAgent.dynamicToolResolvers ?? [];
+  let release: TurnReleaseBoundary | undefined;
 
   const emit = async (event: HandleMessageStreamEvent): Promise<HandleMessageStreamEvent> => {
     const toEmit = await callAdapterEventHandler(adapter, event, adapterCtx);
@@ -288,6 +292,11 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
     messages?: readonly import("ai").ModelMessage[],
   ): Promise<void> => {
     const emitted = await emit(event);
+    if (emitted.type === "turn.completed") {
+      release = { reason: "completed", turnId: emitted.data.turnId };
+    } else if (emitted.type === "turn.failed") {
+      release = { reason: "failed", turnId: emitted.data.turnId };
+    }
     await dispatchStreamEventHooks({ ctx, registry: hookRegistry, event: emitted });
     if (emitted.type !== "step.started") {
       await dispatchDynamicModelEvent({
@@ -408,7 +417,7 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
   ) {
     writer.releaseLock();
     const sessionTotals = getTurnUsageState(stepResult.session.state)?.session;
-    return {
+    const result: DurableStepResult = {
       action: "done",
       output: stepResult.next.output,
       isError: stepResult.next.isError,
@@ -416,6 +425,8 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       sessionState: nextState,
       usage: sessionTotals === undefined ? undefined : toUsage(sessionTotals),
     };
+    if (release !== undefined) Object.assign(result, { release });
+    return result;
   }
 
   if (stepResult.next === null) {
@@ -436,12 +447,14 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       };
     }
 
-    return {
+    const result: DurableStepResult = {
       action: "park",
       ...derivePendingState(stepResult.session),
       serializedContext: nextSerializedContext,
       sessionState: nextState,
     };
+    if (release !== undefined) Object.assign(result, { release });
+    return result;
   }
 
   writer.releaseLock();

@@ -1,9 +1,9 @@
 ---
 title: "Hooks"
-description: "Subscribe to runtime stream events from agent/hooks/."
+description: "Subscribe to runtime events and resource-release boundaries from agent/hooks/."
 ---
 
-Hooks are eve's authored extension points for the runtime event stream. A hook subscribes to stream events and runs side effects after each event is durably recorded, such as audit logging, metrics and alerting, or persisting every session and message to your own database for analytics. Reach for one to observe what the agent does without writing a tool, a context provider (a value made available across a step), or a channel adapter handler (a handler defined on a channel's adapter; see [Channels](../channels)).
+Hooks are eve's authored extension points for runtime stream events and resource-release boundaries. A hook runs side effects such as audit logging, metrics and alerting, persisting sessions and messages, or releasing external resources. Reach for one to observe or react to agent lifecycle without writing a tool, a context provider (a value made available across a step), or a channel adapter handler (a handler defined on a channel's adapter; see [Channels](../channels)).
 
 ## Define a hook
 
@@ -26,11 +26,47 @@ The slug is the path-relative basename. `agent/hooks/audit.ts` becomes `"audit"`
 
 `defineHook`, `HookDefinition`, and `HookContext` live on `eve/hooks`.
 
-A hook file declares stream-event subscribers under the `events` map, keyed by event type, with `*` matching every event. Subscribe to any event in the runtime stream vocabulary documented in [Sessions, runs and streaming](../concepts/sessions-runs-and-streaming), including the lifecycle events `session.started`, `turn.completed`, `message.completed`, and `action.result`. Handlers are observe-only. They cannot inject model context. To contribute runtime model messages, use `defineDynamic` and `defineInstructions` in `agent/instructions/`.
+A hook file declares stream-event subscribers under the `events` map, keyed by event type, with `*` matching every event. Subscribe to any event in the runtime stream vocabulary documented in [Sessions, runs and streaming](../concepts/sessions-runs-and-streaming), including `session.started`, `turn.completed`, `message.completed`, and `action.result`. Handlers are observe-only. They cannot inject model context. To contribute runtime model messages, use `defineDynamic` and `defineInstructions` in `agent/instructions/`.
+
+## Release resources after execution
+
+Declare `lifecycle.release` when an agent owns external resources that must be released after its work finishes:
+
+```ts title="agent/hooks/release-resources.ts"
+import { defineHook } from "eve/hooks";
+
+export default defineHook({
+  lifecycle: {
+    async release(signal, ctx) {
+      await releaseResourcesOwnedBy(ctx.session.id);
+      console.info("resources released", {
+        reason: signal.reason,
+        sessionId: ctx.session.id,
+      });
+    },
+  },
+});
+```
+
+The signal reason is `completed`, `failed`, or `cancelled`. The context contains only stable agent, channel, and session identity:
+
+```ts
+interface ReleaseContext {
+  readonly agent: { readonly name: string; readonly nodeId?: string };
+  readonly channel: { readonly kind?: string };
+  readonly session: { readonly id: string };
+}
+```
+
+For a completed or failed root request, eve releases the descendants created by that request from deepest to shallowest, then calls the root agent's release handler. A waiting descendant remains available while the root request is active. Descendants from an earlier request are not released by a later request.
+
+When a session finishes or is cancelled, eve fences the session tree against new descendant work, stops its active descendants, and calls the applicable release handler for each session from deepest to shallowest. Operator cancellation uses the same lifecycle boundary.
+
+The handler owns the cleanup behavior. eve does not assume a resource provider or resource type. Make the handler idempotent because durable execution may replay it. A handler failure is logged and does not change the agent's response or terminal run result; a fallback cleanup process should retry resources that remain.
 
 ## Hook structure and context
 
-Every handler receives the same `HookContext`:
+Every stream-event handler receives the same `HookContext`:
 
 ```ts
 interface HookContext {
@@ -98,11 +134,14 @@ A thrown handler propagates through the emit composer and surfaces as `turn.fail
 
 Subagents may carry their own `agent/hooks/` directory. Subagent hooks fire only inside the subagent scope. Parent-agent hooks do not fire for subagent turns, and subagent hooks see only the subagent's own context.
 
+Release handlers follow the same isolation. A descendant's release boundary uses the hook registry and identity of that descendant agent, not the parent agent's registry.
+
 ## Hook vs tool vs provider
 
 | Need                                              | Use                                            |
 | ------------------------------------------------- | ---------------------------------------------- |
 | Observe runtime events (audit, metrics, alerting) | `events.<type>` (or a channel adapter handler) |
+| Release resources after agent work                | `lifecycle.release`                            |
 | Provide structured input to the model on demand   | a tool                                         |
 | Make a value available across the entire step     | a context provider                             |
 | Subscribe to platform-specific events             | a channel adapter handler                      |
