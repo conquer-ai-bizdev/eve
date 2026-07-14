@@ -61,6 +61,13 @@ export interface OperatorPagination {
   readonly sortOrder?: "asc" | "desc";
 }
 
+export type OperatorWorkflowRunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 export interface OperatorWorkflowClient {
   getRun(runId: string): Promise<OperatorWorkflowRunRecord>;
   listEvents(input: {
@@ -73,7 +80,7 @@ export interface OperatorWorkflowClient {
     readonly pagination: OperatorPagination;
     /** Optional lower bound for the run activity window. Supply with `endTime`. */
     readonly startTime?: string;
-    readonly status?: string;
+    readonly status?: OperatorWorkflowRunStatus;
   }): Promise<OperatorPage<OperatorWorkflowRunRecord>>;
   listSteps(input: {
     readonly pagination: OperatorPagination;
@@ -126,13 +133,15 @@ export async function createOperatorWorkflowClient(): Promise<OperatorWorkflowCl
       })) as OperatorPage<OperatorWorkflowEventRecord>;
     },
     async listRuns(input) {
-      return (await world.runs.list({
+      if (world.analytics === undefined) {
+        throw new Error("Eve operator run listing requires Workflow analytics support.");
+      }
+      return (await world.analytics.runs.list({
         ...(input.endTime === undefined ? {} : { endTime: input.endTime }),
         pagination: input.pagination,
-        resolveData: "none",
         ...(input.startTime === undefined ? {} : { startTime: input.startTime }),
         ...(input.status === undefined ? {} : { status: input.status }),
-      } as never)) as OperatorPage<OperatorWorkflowRunRecord>;
+      })) as OperatorPage<OperatorWorkflowRunRecord>;
     },
     async listSteps(input) {
       return (await world.steps.list({

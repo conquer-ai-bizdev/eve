@@ -43,10 +43,12 @@ describe("operator workflow API", () => {
     const step = { runId: "run-1", status: "completed", stepId: "step-1", stepName: "work" };
     const event = { eventId: "event-1", runId: "run-1" };
     const world = {
+      analytics: {
+        runs: { list: vi.fn(async () => page(run)) },
+      },
       events: { list: vi.fn(async () => page(event)) },
       runs: {
         get: vi.fn(async () => run),
-        list: vi.fn(async () => page(run)),
       },
       steps: { list: vi.fn(async () => page(step)) },
     };
@@ -70,10 +72,9 @@ describe("operator workflow API", () => {
     ).resolves.toEqual(page(event));
 
     expect(world.runs.get).toHaveBeenCalledWith("run-1", { resolveData: "none" });
-    expect(world.runs.list).toHaveBeenCalledWith({
+    expect(world.analytics.runs.list).toHaveBeenCalledWith({
       endTime: "2026-07-15T00:00:00.000Z",
       pagination: { limit: 20, sortOrder: "desc" },
-      resolveData: "none",
       startTime: "2026-07-14T00:00:00.000Z",
       status: "running",
     });
@@ -82,6 +83,20 @@ describe("operator workflow API", () => {
       resolveData: "none",
       runId: "run-1",
     });
+  });
+
+  it("fails run listing when the world has no analytics reader", async () => {
+    mocks.getWorld.mockResolvedValue({
+      events: { list: vi.fn() },
+      runs: { get: vi.fn() },
+      steps: { list: vi.fn() },
+    });
+
+    const client = await createOperatorWorkflowClient();
+
+    await expect(client.listRuns({ pagination: { limit: 20, sortOrder: "desc" } })).rejects.toThrow(
+      "requires Workflow analytics support",
+    );
   });
 
   it("cancels an active run and reports before and after status", async () => {
