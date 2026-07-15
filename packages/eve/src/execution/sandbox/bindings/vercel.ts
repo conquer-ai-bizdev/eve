@@ -135,6 +135,16 @@ export function createVercelSandbox(
         provider: "vercel",
         type: "sandbox",
       });
+      // Fresh sessions may expose the framework template snapshot. Only an
+      // existing session can carry provider-persisted state owned by this run.
+      const persistedSnapshotId = session.created ? undefined : session.sandbox.currentSnapshotId;
+      if (typeof persistedSnapshotId === "string" && persistedSnapshotId.length > 0) {
+        await createInput.reportResource?.({
+          id: persistedSnapshotId,
+          provider: "vercel",
+          type: "snapshot",
+        });
+      }
 
       if (template === null && session.created) {
         await ensureVercelSandboxBaseRuntime(session.sandbox);

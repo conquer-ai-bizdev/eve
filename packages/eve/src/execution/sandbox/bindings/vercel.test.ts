@@ -167,6 +167,43 @@ describe("createVercelSandbox", () => {
     });
   });
 
+  it("reports a provider-created snapshot when reopening a stopped persistent sandbox", async () => {
+    const sessionSandbox = createMockSandbox({
+      name: "eve-persistent-session",
+      snapshotId: "snap_persisted",
+      status: "stopped",
+    });
+    const sandboxModule = {
+      Sandbox: {
+        create: vi.fn(),
+        get: vi.fn().mockResolvedValue(sessionSandbox),
+      },
+    };
+    const reportResource = vi.fn();
+    const backend = createTestVercelSandbox({
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    await backend.create({
+      existingMetadata: { sandboxName: "eve-persistent-session" },
+      reportResource,
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "session-key",
+      templateKey: null,
+    });
+
+    expect(reportResource).toHaveBeenNthCalledWith(1, {
+      id: "eve-persistent-session",
+      provider: "vercel",
+      type: "sandbox",
+    });
+    expect(reportResource).toHaveBeenNthCalledWith(2, {
+      id: "snap_persisted",
+      provider: "vercel",
+      type: "snapshot",
+    });
+  });
+
   it("creates fresh Vercel sandboxes through the SDK with the eve image", async () => {
     const templateSandbox = createMockSandbox({ name: "template-key" });
     const fetch = vi.fn();
