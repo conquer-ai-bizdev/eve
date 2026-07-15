@@ -35,6 +35,7 @@ function createMockDetachedCommand() {
 function createMockSandbox(input: {
   name: string;
   snapshotId?: string;
+  sourceSnapshotId?: string;
   stopSnapshotId?: string;
   status?: string;
   tags?: Record<string, string>;
@@ -51,6 +52,7 @@ function createMockSandbox(input: {
     readFile: vi.fn<(file: { path: string }) => Promise<object | null>>().mockResolvedValue(null),
     runCommand: vi.fn().mockResolvedValue(createMockCommandResult()),
     snapshot: vi.fn().mockResolvedValue({ snapshotId: `${input.name}-snapshot` }),
+    sourceSnapshotId: input.sourceSnapshotId,
     status: input.status ?? "running",
     stop: vi
       .fn()
@@ -171,6 +173,7 @@ describe("createVercelSandbox", () => {
     const sessionSandbox = createMockSandbox({
       name: "eve-persistent-session",
       snapshotId: "snap_persisted",
+      sourceSnapshotId: "snap_template",
       status: "stopped",
     });
     const sandboxModule = {
@@ -201,6 +204,39 @@ describe("createVercelSandbox", () => {
       id: "snap_persisted",
       provider: "vercel",
       type: "snapshot",
+    });
+  });
+
+  it("does not report the framework template as a session persistence snapshot", async () => {
+    const sessionSandbox = createMockSandbox({
+      name: "eve-running-session",
+      snapshotId: "snap_template",
+      sourceSnapshotId: "snap_template",
+    });
+    const sandboxModule = {
+      Sandbox: {
+        create: vi.fn(),
+        get: vi.fn().mockResolvedValue(sessionSandbox),
+      },
+    };
+    const reportResource = vi.fn();
+    const backend = createTestVercelSandbox({
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    await backend.create({
+      existingMetadata: { sandboxName: "eve-running-session" },
+      reportResource,
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "session-key",
+      templateKey: null,
+    });
+
+    expect(reportResource).toHaveBeenCalledTimes(1);
+    expect(reportResource).toHaveBeenCalledWith({
+      id: "eve-running-session",
+      provider: "vercel",
+      type: "sandbox",
     });
   });
 
