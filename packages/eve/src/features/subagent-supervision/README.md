@@ -46,7 +46,8 @@ event definitions or inspect Workflow storage.
 - A cancellation fence aborts the active descendant turn and kills detached
   sandbox commands before the turn can publish another result.
 - A foreground-child wait receives the same fence through its durable turn
-  inbox and acknowledges before the parent session is cancelled.
+  inbox. Eve force-cancels a turn that does not acknowledge within the bounded
+  grace period before releasing the parent session.
 - Foreground delegation remains the default.
 
 ## Integration Seams

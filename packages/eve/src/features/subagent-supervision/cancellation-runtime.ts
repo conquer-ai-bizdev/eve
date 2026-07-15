@@ -5,8 +5,11 @@ import { readSubagentCancellationMailbox } from "#features/subagent-supervision/
 import type { ChildLifecycleStatus } from "#public/definitions/subagent-control.js";
 
 const TERMINAL_STATUSES = new Set<ChildLifecycleStatus>(["completed", "failed", "cancelled"]);
+const ACKNOWLEDGEMENT_ATTEMPTS = 20;
+const ACKNOWLEDGEMENT_POLL_MS = 100;
+const FORCED_CANCELLATION_TIMEOUT_MS = 10_000;
 
-/** Waits for execution acknowledgement, then terminates the acknowledged turn Workflow. */
+/** Signals an active turn, then force-cancels it after a bounded acknowledgement grace period. */
 export async function cancelAcknowledgedSubagentTurn(input: {
   readonly abortSignal: AbortSignal;
   readonly ancestorSessionId: string;
@@ -29,7 +32,7 @@ export async function cancelAcknowledgedSubagentTurn(input: {
   }
 
   let cursor = input.fenceSequence + 1;
-  for (let attempt = 0; attempt < 300; attempt += 1) {
+  for (let attempt = 0; attempt < ACKNOWLEDGEMENT_ATTEMPTS; attempt += 1) {
     if (TERMINAL_STATUSES.has(await workflowStatus(input.turn.turnRunId))) return;
     const mailbox = await readSubagentCancellationMailbox(input.sessionId, cursor);
     cursor = mailbox.nextCursor;
@@ -41,12 +44,15 @@ export async function cancelAcknowledgedSubagentTurn(input: {
       await waitForTerminalStatus(input);
       return;
     }
-    await delay(100, input.abortSignal);
-    assertNotAborted(input);
+    if (input.abortSignal.aborted) break;
+    await delay(ACKNOWLEDGEMENT_POLL_MS, input.abortSignal);
   }
-  throw new Error(
-    `Active turn ${input.turn.turnRunId} did not acknowledge termination for ${input.ancestorSessionId}`,
-  );
+
+  await cancelSubagentWorkflowRun(input.turn.turnRunId, input.ancestorSessionId);
+  await waitForTerminalStatus({
+    ...input,
+    abortSignal: AbortSignal.timeout(FORCED_CANCELLATION_TIMEOUT_MS),
+  });
 }
 
 /** Emits Workflow's cancellation event without introducing a nested durable step. */

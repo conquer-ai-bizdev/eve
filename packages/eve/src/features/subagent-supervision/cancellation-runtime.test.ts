@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   cancelAcknowledgedSubagentTurn,
@@ -24,6 +24,10 @@ describe("subagent cancellation runtime", () => {
       runs: { get: getRun },
       specVersion: 1,
     } as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("cancels an active turn only after its post-fence acknowledgement", async () => {
@@ -118,6 +122,34 @@ describe("subagent cancellation runtime", () => {
     ).rejects.toThrow("workflow transport failed");
 
     expect(createEvent).not.toHaveBeenCalled();
+  });
+
+  it("force-cancels an active turn after bounded acknowledgement grace", async () => {
+    vi.useFakeTimers();
+    getRun.mockResolvedValue({ status: "running" });
+    createEvent.mockImplementation(async () => {
+      getRun.mockResolvedValue({ status: "cancelled" });
+    });
+    vi.mocked(readSubagentCancellationMailbox).mockResolvedValue({
+      acknowledgements: [],
+      nextCursor: 3,
+    });
+
+    const cancellation = cancelAcknowledgedSubagentTurn({
+      abortSignal: new AbortController().signal,
+      ancestorSessionId: "ancestor",
+      fenceSequence: 2,
+      sessionId: "child",
+      turn: { turnId: "turn-1", turnRunId: "turn-run" },
+    });
+    await vi.runAllTimersAsync();
+    await cancellation;
+
+    expect(createEvent).toHaveBeenCalledWith("turn-run", {
+      eventData: { cancelReason: "Stopped by ancestor ancestor" },
+      eventType: "run_cancelled",
+      specVersion: 1,
+    });
   });
 
   it("emits the tool-step-safe Workflow cancellation event", async () => {
