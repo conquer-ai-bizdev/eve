@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { prewarmAppSandboxes } from "../../src/execution/sandbox/prewarm.js";
 import {
   runVercelBuildPrewarm,
   shouldPrewarmVercelBuild,
+  VERCEL_SANDBOX_TEMPLATE_MANIFEST_PATH,
 } from "../../src/internal/nitro/host/vercel-build-prewarm.js";
 import type {
   SandboxBackendPrewarmInput,
@@ -31,14 +32,16 @@ describe("Vercel build-time sandbox prewarm", () => {
     const appRoot = await createScenarioAppRoot();
     const events = createPrewarmEvents();
     const log = vi.fn();
+    const outputDir = join(appRoot, ".vercel", "output");
 
     await compileAgent({
       startPath: appRoot,
     });
-    await prewarmAppSandboxes({
+    await runVercelBuildPrewarm({
       appRoot,
       log,
       dispatch: createRecordingDispatch(events),
+      outputDir,
     });
 
     expect(events.templateKeys).toHaveLength(2);
@@ -50,6 +53,20 @@ describe("Vercel build-time sandbox prewarm", () => {
       "eve: initializing 2 sandbox templates...",
       "eve: initialized 2 sandbox templates (0 reused, 2 built).",
     ]);
+    const manifest = JSON.parse(
+      await readFile(join(outputDir, VERCEL_SANDBOX_TEMPLATE_MANIFEST_PATH), "utf8"),
+    ) as {
+      deploymentId: string;
+      kind: string;
+      templateKeys: string[];
+      version: number;
+    };
+    expect(manifest).toEqual({
+      deploymentId: "dpl_test_build_prewarm",
+      kind: "eve-sandbox-template-manifest",
+      templateKeys: [...events.templateKeys].sort(),
+      version: 1,
+    });
   });
 
   it("fails the hosted build when sandbox bootstrap fails during prewarm", async () => {
