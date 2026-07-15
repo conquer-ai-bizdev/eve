@@ -68,6 +68,7 @@ describe("prewarmAppSandboxes", () => {
     const inputs: SandboxBackendPrewarmInput[] = [];
 
     const templateKeys = await resolveSandboxTemplateKeys({
+      appRoot,
       compiledArtifactsSource,
       graph,
     });

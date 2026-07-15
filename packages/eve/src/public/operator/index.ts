@@ -222,6 +222,7 @@ export async function listOperatorSandboxTemplateKeys(
 ): Promise<readonly string[]> {
   const { bundle, compiledArtifactsSource } = await loadOperatorRuntime(appRoot);
   return await resolveSandboxTemplateKeys({
+    appRoot,
     compiledArtifactsSource,
     graph: bundle.graph,
   });

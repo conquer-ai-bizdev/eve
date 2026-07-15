@@ -37,11 +37,6 @@ interface NodeSandbox extends RuntimeRegisteredSandbox {
   readonly nodeId: string;
 }
 
-interface SandboxTemplateDescriptor extends NodeSandbox {
-  readonly label: string;
-  readonly templateKey: string;
-}
-
 /**
  * Optional dispatch override that intercepts every `backend.prewarm`
  * call. Production code never supplies this; the orchestrator dispatches
@@ -229,18 +224,13 @@ export async function prewarmBuiltAppSandboxes(input: {
   );
 }
 
-/**
- * Returns the exact sandbox template keys referenced by one compiled runtime
- * graph. Consumers can use this as an allowlist without duplicating Eve's
- * private template-key contract.
- */
+/** Returns the exact template keys used by Eve's existing prewarm path. */
 export async function resolveSandboxTemplateKeys(input: {
+  readonly appRoot: string;
   readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
   readonly graph: ResolvedAgentGraphBundle;
 }): Promise<readonly string[]> {
-  return (await collectSandboxTemplateDescriptors(input)).map(
-    (descriptor) => descriptor.templateKey,
-  );
+  return (await collectPrewarmTargets(input)).map((target) => target.input.templateKey);
 }
 
 async function collectPrewarmTargets(input: {
@@ -256,60 +246,43 @@ async function collectPrewarmTargets(input: {
   const targets: PrewarmTarget[] = [];
 
   await Promise.all(
-    (await collectSandboxTemplateDescriptors(input)).map(
-      async ({ definition, label, nodeId, templateKey, workspaceResourceRoot }) => {
-        targets.push({
-          backend: definition.backend,
-          label,
-          input: {
-            bootstrap: definition.bootstrap,
-            seedFiles: await loadResourceRootSeedFiles({
-              compileDirectoryPath,
-              workspaceResourceRoot,
-            }),
-            runtimeContext,
-            templateKey,
-          },
-          signature: `${definition.backend.name}:${nodeId}:${templateKey}`,
-        });
-      },
-    ),
+    collectNodeSandboxes(input.graph).map(async ({ definition, nodeId, workspaceResourceRoot }) => {
+      const templatePlan = createRuntimeSandboxTemplatePlan({
+        definition,
+        workspaceResourceRoot,
+      });
+      const templateKey = await createRuntimeSandboxTemplateKey({
+        backendName: definition.backend.name,
+        compiledArtifactsSource: input.compiledArtifactsSource,
+        nodeId,
+        sourceId: definition.sourceId,
+        templatePlan,
+      });
+
+      if (templateKey === null) {
+        return;
+      }
+
+      targets.push({
+        backend: definition.backend,
+        label: formatLabel(nodeId),
+        input: {
+          bootstrap: definition.bootstrap,
+          seedFiles: await loadResourceRootSeedFiles({
+            compileDirectoryPath,
+            workspaceResourceRoot,
+          }),
+          runtimeContext,
+          templateKey,
+        },
+        signature: `${definition.backend.name}:${nodeId}:${templateKey}`,
+      });
+    }),
   );
 
   // Template keys factor in nodeId (see runtime/sandbox/keys.ts), so each
   // node already produces a distinct templateKey; no dedup is needed.
   return targets.sort((left, right) => left.label.localeCompare(right.label));
-}
-
-async function collectSandboxTemplateDescriptors(input: {
-  readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
-  readonly graph: ResolvedAgentGraphBundle;
-}): Promise<readonly SandboxTemplateDescriptor[]> {
-  const descriptors = await Promise.all(
-    collectNodeSandboxes(input.graph).map(async (sandbox) => {
-      const templatePlan = createRuntimeSandboxTemplatePlan({
-        definition: sandbox.definition,
-        workspaceResourceRoot: sandbox.workspaceResourceRoot,
-      });
-      const templateKey = await createRuntimeSandboxTemplateKey({
-        backendName: sandbox.definition.backend.name,
-        compiledArtifactsSource: input.compiledArtifactsSource,
-        nodeId: sandbox.nodeId,
-        sourceId: sandbox.definition.sourceId,
-        templatePlan,
-      });
-      return templateKey === null
-        ? null
-        : {
-            ...sandbox,
-            label: formatLabel(sandbox.nodeId),
-            templateKey,
-          };
-    }),
-  );
-  return descriptors
-    .filter((descriptor): descriptor is SandboxTemplateDescriptor => descriptor !== null)
-    .sort((left, right) => left.label.localeCompare(right.label));
 }
 
 /**

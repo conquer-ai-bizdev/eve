@@ -208,6 +208,7 @@ describe("operator sandbox API", () => {
       "eve-sbx-tpl-vercel-project-worker",
     ]);
     expect(mocks.resolveSandboxTemplateKeys).toHaveBeenCalledWith({
+      appRoot: "/app",
       compiledArtifactsSource: { appRoot: "/app", kind: "disk" },
       graph,
     });
