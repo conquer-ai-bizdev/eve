@@ -21,6 +21,7 @@ import { createRuntimeSandboxKeys } from "#runtime/sandbox/keys.js";
 import type { RuntimeSandboxRegistry } from "#runtime/sandbox/registry.js";
 import { createRuntimeSandboxTemplatePlan } from "#runtime/sandbox/template-plan.js";
 import type { SandboxAccess, SandboxSessionState, SandboxState } from "#sandbox/state.js";
+import { recordSandboxResourceReference } from "#runtime/attributes/sandbox-resources.js";
 
 /**
  * Input for creating or reattaching the live sandbox for one step execution.
@@ -122,6 +123,8 @@ export async function ensureSandboxAccess(input: EnsureSandboxAccessInput): Prom
 
     const createInput: SandboxBackendCreateInput = {
       existingMetadata: reattachSession?.metadata,
+      reportResource: async (resource) =>
+        await recordSandboxResourceReference(input.sessionId, resource),
       runtimeContext: { appRoot },
       sessionKey: keys.sessionKey,
       tags: input.tags,

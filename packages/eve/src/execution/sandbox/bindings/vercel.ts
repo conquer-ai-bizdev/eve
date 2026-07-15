@@ -130,12 +130,18 @@ export function createVercelSandbox(
         );
       }
 
+      await createInput.reportResource?.({
+        id: session.sandbox.name,
+        provider: "vercel",
+        type: "sandbox",
+      });
+
       if (template === null && session.created) {
         await ensureVercelSandboxBaseRuntime(session.sandbox);
         await applyInitialVercelNetworkPolicy(session.sandbox, createOptions.networkPolicy);
       }
 
-      return createHandle(session.sandbox, createInput.sessionKey);
+      return createHandle(session.sandbox, createInput.sessionKey, createInput.reportResource);
     },
     async prewarm(
       prewarmInput: SandboxBackendPrewarmInput<VercelSandboxBootstrapUseOptions>,
@@ -435,6 +441,7 @@ function withBaseSetupNetworkPolicy(
 function createHandle(
   sandbox: VercelSandbox,
   sessionKey: string,
+  reportResource: SandboxBackendCreateInput["reportResource"],
 ): SandboxBackendHandle<VercelSandboxSessionUseOptions> {
   return {
     session: buildSandboxSession(
@@ -461,20 +468,25 @@ function createHandle(
     // later restore provider-persisted state; non-persistent sessions do not
     // ask Vercel to create that persistence snapshot.
     async shutdown() {
-      await stopVercelSandbox(sandbox);
+      const stopped = await stopVercelSandbox(sandbox);
+      const snapshotId = stopped?.snapshot?.id;
+      if (typeof snapshotId === "string" && snapshotId.length > 0) {
+        await reportResource?.({ id: snapshotId, provider: "vercel", type: "snapshot" });
+      }
     },
   };
 }
 
-async function stopVercelSandbox(sandbox: VercelSandbox): Promise<void> {
+async function stopVercelSandbox(sandbox: VercelSandbox) {
   if (sandbox.status !== "running" && sandbox.status !== "pending") {
-    return;
+    return undefined;
   }
   try {
-    await sandbox.stop();
+    return await sandbox.stop();
   } catch {
     // Best-effort: an unreachable or already-stopped sandbox must not
     // block server shutdown; the provider-side timeout is the backstop.
+    return undefined;
   }
 }
 

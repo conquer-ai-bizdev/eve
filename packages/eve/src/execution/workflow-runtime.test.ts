@@ -182,6 +182,7 @@ describe("createWorkflowRuntime#run", () => {
         allowReservedAttributes: true,
         attributes: {
           "$eve.agent": "test-agent",
+          "$eve.resource_tracking": "1",
           "$eve.title": "hello",
           "$eve.trigger": "http",
           "$eve.type": "session",
@@ -238,6 +239,7 @@ describe("createWorkflowRuntime#run", () => {
         allowReservedAttributes: true,
         attributes: {
           "$eve.agent": "test-agent",
+          "$eve.resource_tracking": "1",
           "$eve.channel_request_id": "req_run",
           "$eve.title": "hello",
           "$eve.trigger": "http",
@@ -279,6 +281,7 @@ describe("createWorkflowRuntime#run", () => {
         "$eve.parent": "parent-session",
         "$eve.parent_call": "call-1",
         "$eve.parent_turn": "turn-1",
+        "$eve.resource_tracking": "1",
         "$eve.root": "root-session",
         "$eve.subagent": "researcher",
         "$eve.title": "research this",
@@ -307,6 +310,7 @@ describe("createWorkflowRuntime#run", () => {
       allowReservedAttributes: true,
       attributes: {
         "$eve.agent": "test-agent",
+        "$eve.resource_tracking": "1",
         "$eve.title": "hello",
         "$eve.trigger": "http",
         "$eve.type": "session",
@@ -317,6 +321,7 @@ describe("createWorkflowRuntime#run", () => {
       allowReservedAttributes: true,
       attributes: {
         "$eve.agent": "test-agent",
+        "$eve.resource_tracking": "1",
         "$eve.title": "hello",
         "$eve.trigger": "http",
         "$eve.type": "session",
@@ -352,6 +357,7 @@ describe("createWorkflowRuntime#run", () => {
         allowReservedAttributes: true,
         attributes: {
           "$eve.agent": "test-agent",
+          "$eve.resource_tracking": "1",
           "$eve.title": "hello",
           "$eve.trigger": "http",
           "$eve.type": "session",

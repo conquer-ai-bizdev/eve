@@ -35,6 +35,7 @@ function createMockDetachedCommand() {
 function createMockSandbox(input: {
   name: string;
   snapshotId?: string;
+  stopSnapshotId?: string;
   status?: string;
   tags?: Record<string, string>;
 }) {
@@ -51,7 +52,11 @@ function createMockSandbox(input: {
     runCommand: vi.fn().mockResolvedValue(createMockCommandResult()),
     snapshot: vi.fn().mockResolvedValue({ snapshotId: `${input.name}-snapshot` }),
     status: input.status ?? "running",
-    stop: vi.fn().mockResolvedValue(undefined),
+    stop: vi
+      .fn()
+      .mockResolvedValue(
+        input.stopSnapshotId === undefined ? undefined : { snapshot: { id: input.stopSnapshotId } },
+      ),
     get tags() {
       return tags;
     },
@@ -124,6 +129,44 @@ afterEach(() => {
 });
 
 describe("createVercelSandbox", () => {
+  it("reports the session sandbox and persistence snapshot identifiers", async () => {
+    const sessionSandbox = createMockSandbox({
+      name: "eve-session-resource",
+      stopSnapshotId: "snap_resource",
+    });
+    const sandboxModule = {
+      Sandbox: {
+        create: vi.fn().mockResolvedValue(sessionSandbox),
+        get: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const reportResource = vi.fn();
+    const backend = createTestVercelSandbox({
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    const handle = await backend.create({
+      reportResource,
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "session-key",
+      templateKey: null,
+    });
+
+    expect(reportResource).toHaveBeenCalledWith({
+      id: "eve-session-resource",
+      provider: "vercel",
+      type: "sandbox",
+    });
+
+    await handle.shutdown();
+
+    expect(reportResource).toHaveBeenLastCalledWith({
+      id: "snap_resource",
+      provider: "vercel",
+      type: "snapshot",
+    });
+  });
+
   it("creates fresh Vercel sandboxes through the SDK with the eve image", async () => {
     const templateSandbox = createMockSandbox({ name: "template-key" });
     const fetch = vi.fn();

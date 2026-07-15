@@ -54,6 +54,22 @@ export interface SandboxSeedFile {
 export type SandboxBackendTags = Readonly<Record<string, string>>;
 
 /**
+ * Immutable provider resource created or resumed for one sandbox-backed run.
+ *
+ * Backends report identifiers only. The runtime owns run attribution and
+ * provider-specific observers own current status reconciliation.
+ */
+export interface SandboxBackendResourceReference {
+  readonly id: string;
+  readonly provider: string;
+  readonly type: "sandbox" | "snapshot";
+}
+
+export type SandboxBackendResourceReporter = (
+  resource: SandboxBackendResourceReference,
+) => void | Promise<void>;
+
+/**
  * Framework-owned runtime context handed to a backend on every
  * {@link SandboxBackend.create} call.
  *
@@ -80,6 +96,8 @@ export interface SandboxBackendCreateInput {
   readonly templateKey: string | null;
   readonly sessionKey: string;
   readonly existingMetadata?: Record<string, unknown>;
+  /** Reports provider resource identifiers for attribution to this run. */
+  readonly reportResource?: SandboxBackendResourceReporter;
   /**
    * Runtime tags the backend should attach to sandbox resources when
    * the underlying provider supports tags.

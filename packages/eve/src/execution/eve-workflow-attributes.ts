@@ -211,6 +211,7 @@ export function buildSessionAttributes(input: {
   return {
     "$eve.agent": input.agentName,
     "$eve.channel_request_id": readChannelRequestId(input.serializedContext),
+    "$eve.resource_tracking": "1",
     "$eve.type": "session",
     "$eve.trigger": readChannelKind(input.serializedContext),
     "$eve.title": deriveSessionTitle(input.inputMessage),
@@ -237,6 +238,7 @@ export function buildSubagentRootAttributes(input: {
 }): Record<string, EveAttributeValue> {
   return {
     "$eve.channel_request_id": readChannelRequestId(input.serializedContext),
+    "$eve.resource_tracking": "1",
     "$eve.type": "subagent",
     "$eve.parent": input.parentSessionId,
     "$eve.parent_call": input.parentCallId,

@@ -350,6 +350,18 @@ describe("ensureSandboxAccess", () => {
     );
   });
 
+  it("supplies a provider-neutral resource reporter to the backend", async () => {
+    const backend = createBackend();
+    const registry = createTestRegistry({}, backend);
+
+    const access = await ensure({ registry });
+    await access.get();
+
+    expect(backend.create).toHaveBeenCalledWith(
+      expect.objectContaining({ reportResource: expect.any(Function) }),
+    );
+  });
+
   it("passes runtime tags to the sandbox backend", async () => {
     const backend = createBackend();
     const registry = createTestRegistry({}, backend);

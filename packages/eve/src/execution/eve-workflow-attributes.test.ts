@@ -148,6 +148,7 @@ describe("buildSessionAttributes", () => {
     expect(attrs).toEqual({
       "$eve.agent": "test-agent",
       "$eve.channel_request_id": undefined,
+      "$eve.resource_tracking": "1",
       "$eve.type": "session",
       "$eve.trigger": "slack",
       "$eve.title": "ship the thing please",
@@ -193,6 +194,7 @@ describe("buildSubagentRootAttributes", () => {
 
     expect(attrs).toEqual({
       "$eve.channel_request_id": undefined,
+      "$eve.resource_tracking": "1",
       "$eve.type": "subagent",
       "$eve.parent": "wrun_parent_subagent",
       "$eve.parent_call": "call_subagent_0",

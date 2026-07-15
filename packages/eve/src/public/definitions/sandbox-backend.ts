@@ -1,5 +1,7 @@
 export type {
   SandboxBackendHandle,
+  SandboxBackendResourceReference,
+  SandboxBackendResourceReporter,
   SandboxBackendSessionState,
   SandboxSeedFile,
   SandboxBackendTags,
