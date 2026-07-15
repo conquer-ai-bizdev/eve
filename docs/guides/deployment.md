@@ -106,6 +106,8 @@ During hosted builds, eve prewarms reusable Vercel sandbox templates so the firs
 - Seed-only templates are keyed by skills and workspace file contents, so unchanged seeds reuse a template across deploys.
 - Templates with a `bootstrap()` are keyed by the optional resolved `revalidationKey()` plus the authored sandbox source and seed contents, so matching inputs reuse a template across deploys.
 - Each template shows up in the build log as either `reused cached` or `built`.
+- A successful Vercel build publishes the exact prewarmed template keys at
+  `/.well-known/eve/sandbox-templates.json` for deployment maintenance.
 - Prewarming only covers template construction. `onSession()` still runs at runtime, once per session.
 - **If build-time prewarm fails, the build fails.**
 

@@ -56,6 +56,7 @@ interface PrewarmSandboxesInput {
   readonly log?: (message: string) => void;
   readonly dispatch?: SandboxBackendPrewarmDispatch;
   readonly onPrewarmSignature?: (signature: string) => void;
+  readonly onTemplateKeys?: (templateKeys: readonly string[]) => void;
   readonly shouldPrewarmSignature?: (signature: string) => boolean;
 }
 
@@ -68,6 +69,8 @@ interface PrewarmSandboxesInput {
  */
 export async function prewarmSandboxes(input: PrewarmSandboxesInput): Promise<void> {
   const targets = await collectPrewarmTargets(input);
+  const templateKeys = targets.map((target) => target.input.templateKey);
+  input.onTemplateKeys?.(templateKeys);
 
   if (targets.length === 0) {
     return;
@@ -154,6 +157,7 @@ export async function prewarmAppSandboxes(input: {
   readonly log?: (message: string) => void;
   readonly dispatch?: SandboxBackendPrewarmDispatch;
   readonly onPrewarmSignature?: (signature: string) => void;
+  readonly onTemplateKeys?: (templateKeys: readonly string[]) => void;
   readonly shouldPrewarmSignature?: (signature: string) => boolean;
 }): Promise<void> {
   const compiledArtifactsSource =
@@ -173,6 +177,7 @@ export async function prewarmAppSandboxes(input: {
     graph,
     log: input.log,
     onPrewarmSignature: input.onPrewarmSignature,
+    onTemplateKeys: input.onTemplateKeys,
     shouldPrewarmSignature: input.shouldPrewarmSignature,
   });
 }
@@ -222,15 +227,6 @@ export async function prewarmBuiltAppSandboxes(input: {
       });
     },
   );
-}
-
-/** Returns the exact template keys used by Eve's existing prewarm path. */
-export async function resolveSandboxTemplateKeys(input: {
-  readonly appRoot: string;
-  readonly compiledArtifactsSource: RuntimeCompiledArtifactsSource;
-  readonly graph: ResolvedAgentGraphBundle;
-}): Promise<readonly string[]> {
-  return (await collectPrewarmTargets(input)).map((target) => target.input.templateKey);
 }
 
 async function collectPrewarmTargets(input: {

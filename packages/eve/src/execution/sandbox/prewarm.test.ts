@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { prewarmAppSandboxes, resolveSandboxTemplateKeys } from "#execution/sandbox/prewarm.js";
+import { prewarmAppSandboxes } from "#execution/sandbox/prewarm.js";
 import type {
   SandboxBackend,
   SandboxBackendPrewarmInput,
@@ -67,16 +67,15 @@ describe("prewarmAppSandboxes", () => {
     const graph = createGraph();
     const inputs: SandboxBackendPrewarmInput[] = [];
 
-    const templateKeys = await resolveSandboxTemplateKeys({
-      appRoot,
-      compiledArtifactsSource,
-      graph,
-    });
+    let templateKeys: readonly string[] = [];
     await prewarmAppSandboxes({
       appRoot,
       compiledArtifactsSource,
       dispatch: recordPrewarmInputs(inputs),
       loadAgentGraph: async () => graph,
+      onTemplateKeys: (keys) => {
+        templateKeys = keys;
+      },
     });
 
     expect(templateKeys).toEqual(inputs.map((input) => input.templateKey));

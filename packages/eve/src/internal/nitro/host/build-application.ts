@@ -336,6 +336,7 @@ export async function buildApplication(rootDir: string): Promise<string> {
       log(message) {
         console.log(message);
       },
+      outputDir: outputDirectory,
     });
     const flowNitroOutputDir = await buildVercelNitroSurface(preparedHost, "flow");
     await emitVercelWorkflowFunctions({

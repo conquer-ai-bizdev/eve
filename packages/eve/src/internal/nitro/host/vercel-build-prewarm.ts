@@ -1,6 +1,19 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+
 import { prewarmAppSandboxes } from "#execution/sandbox/prewarm.js";
 
 type PrewarmAppSandboxesInput = Parameters<typeof prewarmAppSandboxes>[0];
+type VercelBuildPrewarmInput = PrewarmAppSandboxesInput & {
+  readonly outputDir: string;
+};
+
+export const VERCEL_SANDBOX_TEMPLATE_MANIFEST_PATH = join(
+  "static",
+  ".well-known",
+  "eve",
+  "sandbox-templates.json",
+);
 
 const VERCEL_BUILD_PREWARM_SKIPPED_WARNING =
   "[eve] WARNING: Skipped Vercel sandbox template prewarm because VERCEL_DEPLOYMENT_ID is missing. " +
@@ -33,13 +46,35 @@ export function shouldPrewarmVercelBuild(): boolean {
  * Returns `true` when the prewarm ran, `false` when the current
  * environment is not a Vercel build.
  */
-export async function runVercelBuildPrewarm(input: PrewarmAppSandboxesInput): Promise<boolean> {
+export async function runVercelBuildPrewarm(input: VercelBuildPrewarmInput): Promise<boolean> {
   if (!shouldPrewarmVercelBuild()) {
     if (process.env.VERCEL?.trim() && !process.env.VERCEL_DEPLOYMENT_ID?.trim()) {
       console.warn(VERCEL_BUILD_PREWARM_SKIPPED_WARNING);
     }
     return false;
   }
-  await prewarmAppSandboxes(input);
+  let templateKeys: readonly string[] = [];
+  await prewarmAppSandboxes({
+    ...input,
+    onTemplateKeys(keys) {
+      templateKeys = keys;
+      input.onTemplateKeys?.(keys);
+    },
+  });
+  const manifestPath = join(input.outputDir, VERCEL_SANDBOX_TEMPLATE_MANIFEST_PATH);
+  await mkdir(dirname(manifestPath), { recursive: true });
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify(
+      {
+        deploymentId: process.env.VERCEL_DEPLOYMENT_ID,
+        kind: "eve-sandbox-template-manifest",
+        templateKeys: [...templateKeys].sort(),
+        version: 1,
+      },
+      null,
+      2,
+    )}\n`,
+  );
   return true;
 }

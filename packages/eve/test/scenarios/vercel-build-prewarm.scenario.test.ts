@@ -66,6 +66,7 @@ describe("Vercel build-time sandbox prewarm", () => {
       runVercelBuildPrewarm({
         appRoot,
         dispatch: createFailingBootstrapDispatch(),
+        outputDir: join(appRoot, ".vercel", "output"),
       }),
     ).rejects.toThrow("bootstrap command failed");
   });
@@ -87,6 +88,7 @@ describe("Vercel build-time sandbox prewarm", () => {
     await expect(
       runVercelBuildPrewarm({
         appRoot: "/unused",
+        outputDir: "/unused/.vercel/output",
       }),
     ).resolves.toBe(false);
 

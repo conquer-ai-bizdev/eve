@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   getRun: vi.fn(),
   getWorld: vi.fn(),
   releaseSessionTree: vi.fn(async () => ({ sessions: [] })),
-  resolveSandboxTemplateKeys: vi.fn(),
 }));
 
 vi.mock("#internal/workflow/runtime.js", () => ({
@@ -20,9 +19,6 @@ vi.mock("#internal/application/runtime-compiled-artifacts-source.js", () => ({
 }));
 vi.mock("#execution/sandbox/ensure.js", () => ({
   ensureSandboxAccess: mocks.ensureSandboxAccess,
-}));
-vi.mock("#execution/sandbox/prewarm.js", () => ({
-  resolveSandboxTemplateKeys: mocks.resolveSandboxTemplateKeys,
 }));
 vi.mock("#runtime/compiled-artifacts-source.js", () => ({
   createBundledRuntimeCompiledArtifactsSource: mocks.createBundledSource,
@@ -37,7 +33,6 @@ vi.mock("#execution/release-participants.js", () => ({
 import {
   cancelOperatorWorkflowRun,
   createOperatorWorkflowClient,
-  listOperatorSandboxTemplateKeys,
   listOperatorSandboxTargets,
   runOperatorSandboxCommand,
 } from "./index.js";
@@ -192,25 +187,6 @@ describe("operator sandbox API", () => {
     expect(mocks.createBundledSource).toHaveBeenCalled();
     expect(mocks.getCompiledRuntimeAgentBundle).toHaveBeenCalledWith({
       compiledArtifactsSource: { kind: "bundled" },
-    });
-  });
-
-  it("lists the exact template keys referenced by the current bundle", async () => {
-    const graph = graphFixture();
-    mocks.getCompiledRuntimeAgentBundle.mockResolvedValue({ graph });
-    mocks.resolveSandboxTemplateKeys.mockResolvedValue([
-      "eve-sbx-tpl-vercel-project-root",
-      "eve-sbx-tpl-vercel-project-worker",
-    ]);
-
-    await expect(listOperatorSandboxTemplateKeys("/app")).resolves.toEqual([
-      "eve-sbx-tpl-vercel-project-root",
-      "eve-sbx-tpl-vercel-project-worker",
-    ]);
-    expect(mocks.resolveSandboxTemplateKeys).toHaveBeenCalledWith({
-      appRoot: "/app",
-      compiledArtifactsSource: { appRoot: "/app", kind: "disk" },
-      graph,
     });
   });
 

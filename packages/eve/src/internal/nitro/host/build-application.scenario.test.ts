@@ -308,6 +308,7 @@ describe("buildApplication", () => {
     expect(runVercelBuildPrewarmMock).toHaveBeenCalledWith({
       appRoot,
       log: expect.any(Function),
+      outputDir: join(appRoot, ".vercel", "output"),
     });
 
     const summary = JSON.parse(
