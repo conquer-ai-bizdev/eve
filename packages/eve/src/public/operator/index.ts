@@ -3,6 +3,7 @@ import { createAuthoredSourceRuntimeCompiledArtifactsSource } from "#internal/ap
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { SandboxKey, SessionIdKey, SessionKey } from "#context/keys.js";
 import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
+import { resolveSandboxTemplateKeys } from "#execution/sandbox/prewarm.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
@@ -213,6 +214,17 @@ export async function listOperatorSandboxTargets(
       name: node.agent.config.name,
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+/** Returns the exact template sandbox names referenced by the current build. */
+export async function listOperatorSandboxTemplateKeys(
+  appRoot = process.cwd(),
+): Promise<readonly string[]> {
+  const { bundle, compiledArtifactsSource } = await loadOperatorRuntime(appRoot);
+  return await resolveSandboxTemplateKeys({
+    compiledArtifactsSource,
+    graph: bundle.graph,
+  });
 }
 
 /** Runs one command through the target node's resolved Bash tool. */

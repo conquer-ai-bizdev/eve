@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { prewarmAppSandboxes } from "#execution/sandbox/prewarm.js";
+import { prewarmAppSandboxes, resolveSandboxTemplateKeys } from "#execution/sandbox/prewarm.js";
 import type {
   SandboxBackend,
   SandboxBackendPrewarmInput,
@@ -59,6 +59,26 @@ describe("prewarmAppSandboxes", () => {
     expect(firstInputs[0]?.runtimeContext.appRoot).toBe(appRoot);
     expect(secondInputs[0]?.runtimeContext.appRoot).toBe(appRoot);
     expect(firstInputs[0]?.templateKey).toBe(secondInputs[0]?.templateKey);
+  });
+
+  it("reports the same exact template keys that prewarm sends to the backend", async () => {
+    const appRoot = process.cwd();
+    const compiledArtifactsSource = createDiskRuntimeCompiledArtifactsSource(appRoot);
+    const graph = createGraph();
+    const inputs: SandboxBackendPrewarmInput[] = [];
+
+    const templateKeys = await resolveSandboxTemplateKeys({
+      compiledArtifactsSource,
+      graph,
+    });
+    await prewarmAppSandboxes({
+      appRoot,
+      compiledArtifactsSource,
+      dispatch: recordPrewarmInputs(inputs),
+      loadAgentGraph: async () => graph,
+    });
+
+    expect(templateKeys).toEqual(inputs.map((input) => input.templateKey));
   });
 
   it("skips backend prewarm when the sandbox signature is already warm", async () => {
