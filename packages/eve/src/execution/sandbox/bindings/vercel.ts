@@ -135,11 +135,12 @@ export function createVercelSandbox(
         provider: "vercel",
         type: "sandbox",
       });
-      // Fresh sessions may expose the framework template snapshot. Only an
-      // existing session can carry provider-persisted state owned by this run.
+      // Fresh sessions may expose the framework template snapshot. On resume,
+      // Vercel exposes the persistence snapshot as both current and source, so
+      // compare against Eve's known template instead of sourceSnapshotId.
       const currentSnapshotId = session.created ? undefined : session.sandbox.currentSnapshotId;
       const persistedSnapshotId =
-        currentSnapshotId === session.sandbox.sourceSnapshotId ? undefined : currentSnapshotId;
+        currentSnapshotId === template?.snapshotId ? undefined : currentSnapshotId;
       if (typeof persistedSnapshotId === "string" && persistedSnapshotId.length > 0) {
         await createInput.reportResource?.({
           id: persistedSnapshotId,

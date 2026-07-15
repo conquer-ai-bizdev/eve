@@ -173,7 +173,7 @@ describe("createVercelSandbox", () => {
     const sessionSandbox = createMockSandbox({
       name: "eve-persistent-session",
       snapshotId: "snap_persisted",
-      sourceSnapshotId: "snap_template",
+      sourceSnapshotId: "snap_persisted",
       status: "stopped",
     });
     const sandboxModule = {
@@ -208,15 +208,16 @@ describe("createVercelSandbox", () => {
   });
 
   it("does not report the framework template as a session persistence snapshot", async () => {
+    const templateSandbox = createMockSandbox({ name: "template-key" });
     const sessionSandbox = createMockSandbox({
       name: "eve-running-session",
-      snapshotId: "snap_template",
-      sourceSnapshotId: "snap_template",
+      snapshotId: "template-key-snapshot",
+      sourceSnapshotId: "template-key-snapshot",
     });
     const sandboxModule = {
       Sandbox: {
-        create: vi.fn(),
-        get: vi.fn().mockResolvedValue(sessionSandbox),
+        create: vi.fn().mockResolvedValueOnce(templateSandbox),
+        get: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(sessionSandbox),
       },
     };
     const reportResource = vi.fn();
@@ -224,20 +225,23 @@ describe("createVercelSandbox", () => {
       loadSandboxModule: async () => sandboxModule as never,
     });
 
+    await backend.prewarm({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      seedFiles: [],
+      templateKey: "template-key",
+    });
+
     await backend.create({
       existingMetadata: { sandboxName: "eve-running-session" },
       reportResource,
       runtimeContext: { appRoot: "/tmp/test-app-root" },
       sessionKey: "session-key",
-      templateKey: null,
+      templateKey: "template-key",
     });
 
-    expect(reportResource).toHaveBeenCalledTimes(1);
-    expect(reportResource).toHaveBeenCalledWith({
-      id: "eve-running-session",
-      provider: "vercel",
-      type: "sandbox",
-    });
+    expect(reportResource.mock.calls).toEqual([
+      [{ id: "eve-running-session", provider: "vercel", type: "sandbox" }],
+    ]);
   });
 
   it("creates fresh Vercel sandboxes through the SDK with the eve image", async () => {
