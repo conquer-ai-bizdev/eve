@@ -83,4 +83,29 @@ describe("sandboxProvider", () => {
       }),
     );
   });
+
+  it("keeps a shared sandbox tagged with its parent sandbox session id", async () => {
+    const ctx = new ContextContainer();
+    const registry: RuntimeSandboxRegistry = createStubSandboxRegistry();
+
+    ctx.set(BundleKey, createBundle({ agentName: "report-agent", registry }));
+    ctx.set(ChannelKey, {
+      kind: "subagent",
+      state: { sandboxSessionId: "wrun_parent" },
+    });
+    ctx.set(SessionIdKey, "wrun_child");
+
+    await sandboxProvider.create(ctx, createHarnessSession());
+
+    expect(ensureSandboxAccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "wrun_parent",
+        tags: {
+          agent: "report-agent",
+          channel: "subagent",
+          sessionId: "wrun_parent",
+        },
+      }),
+    );
+  });
 });

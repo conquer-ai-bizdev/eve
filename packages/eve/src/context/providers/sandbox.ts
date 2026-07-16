@@ -38,7 +38,7 @@ export const sandboxProvider: FrameworkContextProvider<SandboxAccess> = {
         tags: {
           agent: resolveTagAgentName({ bundle, node }),
           channel: resolveTagChannelKind(channel),
-          sessionId,
+          sessionId: sandboxSessionId,
         },
       }),
     };
