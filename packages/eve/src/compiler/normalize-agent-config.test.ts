@@ -56,7 +56,55 @@ describe("compileAgentConfig", () => {
       sourceKind: "module",
     });
   });
+
+  it("marks source-backed compaction models with their authored slot", async () => {
+    const primaryModel = createLanguageModel();
+    const compactionModel = createLanguageModel();
+    mocks.loadModuleBackedDefinition.mockResolvedValue({
+      compaction: {
+        model: compactionModel,
+        modelContextWindowTokens: 256_000,
+      },
+      model: primaryModel,
+      modelContextWindowTokens: 256_000,
+    });
+
+    const manifest = createAgentSourceManifest({
+      agentId: "app",
+      agentRoot: "/app/agent",
+      appRoot: "/app",
+      configModule: createModuleSourceRef({
+        logicalPath: "agent.ts",
+        sourceId: "agent-config",
+      }),
+    });
+
+    const compiled = await compileAgentConfig(manifest, {
+      modelCatalog: createModelCatalog(),
+    });
+
+    expect(compiled.model.authoredModelSlot).toBeUndefined();
+    expect(compiled.compaction?.model).toMatchObject({
+      authoredModelSlot: "compaction",
+      id: "test/same-model",
+      source: {
+        logicalPath: "agent.ts",
+        sourceId: "agent-config",
+        sourceKind: "module",
+      },
+    });
+  });
 });
+
+function createLanguageModel() {
+  return {
+    doGenerate: vi.fn(),
+    doStream: vi.fn(),
+    modelId: "same-model",
+    provider: "test",
+    specificationVersion: "v3" as const,
+  } as never;
+}
 
 function createModelCatalog(): ManifestCompileContext["modelCatalog"] {
   return {

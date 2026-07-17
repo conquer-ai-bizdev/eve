@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ROOT_COMPILED_AGENT_NODE_ID } from "#compiler/manifest.js";
 import type { CompiledModuleMap } from "#compiler/module-map.js";
@@ -6,7 +6,13 @@ import { defineDynamic } from "#public/definitions/tool.js";
 import {
   loadDynamicRuntimeModelDefinition,
   normalizeDynamicRuntimeModelResult,
+  resolveRuntimeModelReference,
 } from "#runtime/agent/resolve-model.js";
+
+vi.mock("#runtime/agent/mock-model-adapter.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#runtime/agent/mock-model-adapter.js")>()),
+  resolveMockAuthoredRuntimeModel: () => null,
+}));
 
 const DYNAMIC_MODEL_SOURCE = {
   eventNames: ["session.started"],
@@ -96,6 +102,49 @@ describe("dynamic runtime model resolution", () => {
     ).toThrowError(/unknown key\(s\): contextWindowTokens/);
   });
 });
+
+describe("source-backed runtime model resolution", () => {
+  it("hydrates the authored compaction model even when both models have the same id", async () => {
+    const primaryModel = createLanguageModel();
+    const compactionModel = createLanguageModel();
+    const moduleMap = createModuleMap({
+      default: {
+        compaction: { model: compactionModel },
+        model: primaryModel,
+      },
+    });
+    const scope = { moduleMap, nodeId: undefined };
+    const source = {
+      logicalPath: "agent.ts",
+      sourceId: "agent-config",
+      sourceKind: "module" as const,
+    };
+
+    await expect(
+      resolveRuntimeModelReference({ id: "test/same-model", source }, scope),
+    ).resolves.toBe(primaryModel);
+    await expect(
+      resolveRuntimeModelReference(
+        {
+          authoredModelSlot: "compaction",
+          id: "test/same-model",
+          source,
+        },
+        scope,
+      ),
+    ).resolves.toBe(compactionModel);
+  });
+});
+
+function createLanguageModel() {
+  return {
+    doGenerate: () => undefined,
+    doStream: () => undefined,
+    modelId: "same-model",
+    provider: "test",
+    specificationVersion: "v3" as const,
+  } as never;
+}
 
 function createModuleMap(moduleNamespace: Record<string, unknown>): CompiledModuleMap {
   return {

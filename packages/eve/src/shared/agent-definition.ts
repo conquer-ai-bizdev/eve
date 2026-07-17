@@ -44,6 +44,8 @@ export type ModelRouting =
   | { kind: "external"; provider: string };
 
 export type InternalAgentModelDefinition = {
+  /** Selects the authored compaction model; absence selects the primary model. */
+  authoredModelSlot?: "compaction";
   id: string;
   contextWindowTokens?: number;
   source?: ModuleSourceRef;

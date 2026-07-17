@@ -44,7 +44,7 @@ export const UNRESOLVED_AGENT_BEHAVIOR_REVISION = "0".repeat(64);
 /**
  * Current compiled manifest schema version.
  */
-export const COMPILED_AGENT_MANIFEST_VERSION = 36;
+export const COMPILED_AGENT_MANIFEST_VERSION = 37;
 
 /**
  * Compiled channel entry preserved in the compiled manifest.
@@ -364,6 +364,7 @@ const modelRoutingSchema = z.union([
 
 const compiledRuntimeModelReferenceSchema: z.ZodType<CompiledRuntimeModelReference> = z
   .object({
+    authoredModelSlot: z.literal("compaction").optional(),
     contextWindowTokens: z.number().int().positive().optional(),
     id: z.string(),
     source: moduleSourceRefSchema.optional(),
@@ -942,6 +943,9 @@ function cloneCompiledRuntimeModelReference(
     id: model.id,
     routing: cloneModelRouting(model.routing),
   };
+  if (model.authoredModelSlot !== undefined) {
+    clone.authoredModelSlot = model.authoredModelSlot;
+  }
   if (model.contextWindowTokens !== undefined) {
     clone.contextWindowTokens = model.contextWindowTokens;
   }

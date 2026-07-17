@@ -85,6 +85,37 @@ describe("compiledAgentManifestSchema", () => {
     });
   });
 
+  it("preserves the authored compaction model slot", () => {
+    const manifest = createCompiledAgentManifest({
+      agentRoot: "/app/agent",
+      appRoot: "/app",
+      config: {
+        compaction: {
+          model: {
+            authoredModelSlot: "compaction",
+            id: "test/same-model",
+            routing: { kind: "external", provider: "test" },
+            source: {
+              logicalPath: "agent.ts",
+              sourceId: "agent-config",
+              sourceKind: "module",
+            },
+          },
+        },
+        model: {
+          id: "test/same-model",
+          routing: { kind: "external", provider: "test" },
+        },
+        name: "app",
+      },
+    });
+
+    const parsed = compiledAgentManifestSchema.parse(manifest);
+
+    expect(parsed.config.model.authoredModelSlot).toBeUndefined();
+    expect(parsed.config.compaction?.model?.authoredModelSlot).toBe("compaction");
+  });
+
   it("preserves uncapped (false) session token limits", () => {
     const manifest = createCompiledAgentManifest({
       agentRoot: "/app/agent",

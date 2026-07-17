@@ -145,6 +145,7 @@ export async function compileAgentConfig(
 
   if (definition.compaction?.model !== undefined) {
     compaction.model = await normalizeAuthoredModelReference({
+      authoredModelSlot: "compaction",
       modelCatalog: context.modelCatalog,
       purpose: "the compaction summary model",
       contextWindowTokens: definition.compaction.modelContextWindowTokens,
@@ -181,6 +182,7 @@ function normalizeExperimentalDefinition(
 }
 
 async function normalizeAuthoredModelReference(input: {
+  readonly authoredModelSlot?: "compaction";
   readonly modelCatalog: ManifestCompileContext["modelCatalog"];
   readonly purpose: string;
   readonly contextWindowTokens?: number;
@@ -234,6 +236,7 @@ async function normalizeAuthoredModelReference(input: {
   }
 
   const sourceBackedModel = {
+    authoredModelSlot: input.authoredModelSlot,
     id: formatLanguageModelGatewayId(languageModel),
     source: {
       exportName: source.exportName,

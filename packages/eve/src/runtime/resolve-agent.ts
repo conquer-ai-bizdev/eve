@@ -191,11 +191,13 @@ function createResolvedAgentConfig(manifest: CompiledAgentNodeManifest): Resolve
       compaction.model =
         manifest.config.compaction.model.source === undefined
           ? {
+              authoredModelSlot: manifest.config.compaction.model.authoredModelSlot,
               contextWindowTokens: manifest.config.compaction.model.contextWindowTokens,
               id: manifest.config.compaction.model.id,
               providerOptions: manifest.config.compaction.model.providerOptions,
             }
           : {
+              authoredModelSlot: manifest.config.compaction.model.authoredModelSlot,
               contextWindowTokens: manifest.config.compaction.model.contextWindowTokens,
               id: manifest.config.compaction.model.id,
               providerOptions: manifest.config.compaction.model.providerOptions,
