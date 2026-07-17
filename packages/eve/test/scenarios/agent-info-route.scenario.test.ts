@@ -84,9 +84,18 @@ describe("eve agent info route", () => {
     await writeFile(join(agentRoot, "agent.mjs"), 'export default { model: "openai/gpt-5.4" };\n');
     await writeFile(join(agentRoot, "instructions.md"), "You are a precise assistant.\n");
     await mkdir(join(agentRoot, "tools"), { recursive: true });
+    await mkdir(join(agentRoot, "subagents", "reviewer"), { recursive: true });
     await writeFile(
       join(agentRoot, "tools", "get_weather.mjs"),
       'export default { description: "Get the weather.", async execute() { return { temperature: 72 }; } };\n',
+    );
+    await writeFile(
+      join(agentRoot, "subagents", "reviewer", "agent.mjs"),
+      'export default { model: "openai/gpt-5.4", description: "Review one forecast." };\n',
+    );
+    await writeFile(
+      join(agentRoot, "subagents", "reviewer", "instructions.md"),
+      "Review the forecast independently.\n",
     );
 
     await compileAgent({
@@ -105,6 +114,14 @@ describe("eve agent info route", () => {
     expect(payload.version).toBe(1);
     expect(payload.mode).toBe("development");
     expect(payload.agent.model.id).toBe("openai/gpt-5.4");
+    expect(payload.agent.behaviorRevision).toMatch(/^[a-f0-9]{64}$/);
+    expect(payload.subagents.local).toEqual([
+      expect.objectContaining({
+        behaviorRevision: expect.stringMatching(/^[a-f0-9]{64}$/),
+        name: "reviewer",
+        nodeId: "subagents/reviewer",
+      }),
+    ]);
     expect(payload.instructions.static?.markdown).toContain("precise assistant");
     expect(payload.instructions.dynamic).toEqual([]);
     expect(payload.tools.authored.map((tool) => tool.name)).toEqual(["get_weather"]);

@@ -227,6 +227,7 @@ describe("Client.info", () => {
       agent: {
         agentRoot: "/tmp/weather-agent/agent",
         appRoot: "/tmp/weather-agent",
+        behaviorRevision: "0".repeat(64),
         model: {
           id: "gpt-5",
         },

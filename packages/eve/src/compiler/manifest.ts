@@ -38,10 +38,13 @@ export const COMPILED_AGENT_MANIFEST_KIND = "eve-agent-compiled-manifest";
  */
 export const ROOT_COMPILED_AGENT_NODE_ID = "__root__";
 
+/** Placeholder used before the compiler attaches content-derived revisions. */
+export const UNRESOLVED_AGENT_BEHAVIOR_REVISION = "0".repeat(64);
+
 /**
  * Current compiled manifest schema version.
  */
-export const COMPILED_AGENT_MANIFEST_VERSION = 35;
+export const COMPILED_AGENT_MANIFEST_VERSION = 36;
 
 /**
  * Compiled channel entry preserved in the compiled manifest.
@@ -627,6 +630,7 @@ const compiledAgentNodeManifestSchema = z
   .object({
     agentRoot: z.string(),
     appRoot: z.string(),
+    behaviorRevision: z.string().regex(/^[a-f0-9]{64}$/),
     channels: z.array(compiledChannelEntrySchema),
     config: compiledAgentConfigSchema,
     connections: z.array(compiledConnectionDefinitionSchema),
@@ -713,6 +717,7 @@ export const compiledAgentManifestSchema = z
   .object({
     agentRoot: z.string(),
     appRoot: z.string(),
+    behaviorRevision: z.string().regex(/^[a-f0-9]{64}$/),
     extensionMounts: z.array(compiledExtensionMountSchema).default([]),
     channels: z.array(compiledChannelEntrySchema),
     config: compiledAgentConfigSchema,
@@ -745,6 +750,7 @@ export const compiledAgentManifestSchema = z
 export function createCompiledAgentNodeManifest(input: {
   readonly agentRoot: string;
   readonly appRoot: string;
+  readonly behaviorRevision?: string;
   readonly channels?: readonly CompiledChannelEntry[];
   readonly config: CompiledAgentDefinition;
   readonly connections?: readonly CompiledConnectionDefinition[];
@@ -767,6 +773,7 @@ export function createCompiledAgentNodeManifest(input: {
   const node: CompiledAgentNodeManifest = {
     agentRoot: input.agentRoot,
     appRoot: input.appRoot,
+    behaviorRevision: input.behaviorRevision ?? UNRESOLVED_AGENT_BEHAVIOR_REVISION,
     channels: [...(input.channels ?? [])],
     connections: [...(input.connections ?? [])],
     config: {
@@ -897,6 +904,7 @@ export function createCompiledSubagentNodeId(parentNodeId: string, sourceId: str
 export function createCompiledAgentManifest(input: {
   readonly agentRoot: string;
   readonly appRoot: string;
+  readonly behaviorRevision?: string;
   readonly channels?: readonly CompiledChannelEntry[];
   readonly config: CompiledAgentDefinition;
   readonly connections?: readonly CompiledConnectionDefinition[];

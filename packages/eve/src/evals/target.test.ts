@@ -123,6 +123,7 @@ function infoPayload(input: { readonly name: string }) {
     agent: {
       agentRoot: "/tmp/app/agent",
       appRoot: "/tmp/app",
+      behaviorRevision: "0".repeat(64),
       model: { id: "mock" },
       name: input.name,
     },

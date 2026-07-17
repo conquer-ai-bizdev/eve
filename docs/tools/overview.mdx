@@ -37,6 +37,8 @@ When a tool returns structured data, add an optional `outputSchema`. With Zod or
 `execute` gets a `ctx` carrying the runtime accessors:
 
 - `ctx.session`: session metadata, turn, auth, parent lineage.
+- `ctx.agent`: compiler-owned identity of the local agent node executing the tool, including its behavior revision.
+- `ctx.getAgent(nodeId)`: look up another local node in the compiled agent graph by its stored id.
 - `ctx.callId`: the id of the current tool call, carried by the call's [stream events](/docs/concepts/sessions-runs-and-streaming) and approval context.
 - `ctx.operationId`: a stable idempotency key for the logical tool invocation. It remains the same when Workflow replays a crashed turn even if the model provider generates a new `callId`.
 - `ctx.abortSignal`: aborts when the active turn is cancelled. Pass it to cancellation-aware work; sandbox sessions from `ctx.getSandbox()` are already bound to it.

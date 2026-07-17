@@ -139,10 +139,9 @@ describe("createWorkflowRuntime#run", () => {
   }
 
   function mockBundleAndRun(compiledArtifactsSource: RuntimeCompiledArtifactsSource): void {
-    vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
-      compiledArtifactsSource,
-      resolvedAgent: { config: { name: "test-agent" } },
-    } as never);
+    vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue(
+      createMockCompiledBundle(compiledArtifactsSource),
+    );
     getRunMock.mockReturnValue({
       getReadable: () =>
         new ReadableStream<Uint8Array>({
@@ -252,10 +251,9 @@ describe("createWorkflowRuntime#run", () => {
 
   it("seeds subagent lineage attributes when starting a delegated session", async () => {
     const compiledArtifactsSource = {} as RuntimeCompiledArtifactsSource;
-    vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
-      compiledArtifactsSource,
-      nodeId: "researcher",
-    } as never);
+    vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue(
+      createMockCompiledBundle(compiledArtifactsSource, "researcher"),
+    );
     startMock.mockResolvedValue({ runId: "subagent-run" });
 
     await createWorkflowRuntime({
@@ -368,10 +366,9 @@ describe("createWorkflowRuntime#run", () => {
 
   it("does not open the workflow event stream until the events stream is read", async () => {
     const compiledArtifactsSource = {} as RuntimeCompiledArtifactsSource;
-    vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
-      compiledArtifactsSource,
-      resolvedAgent: { config: { name: "test-agent" } },
-    } as never);
+    vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue(
+      createMockCompiledBundle(compiledArtifactsSource),
+    );
     const bytes = new TextEncoder().encode('{"type":"test.event"}\n');
     const getReadable = vi.fn(
       () =>
@@ -404,3 +401,21 @@ describe("createWorkflowRuntime#run", () => {
     expect(getReadable).toHaveBeenCalledTimes(1);
   });
 });
+
+function createMockCompiledBundle(
+  compiledArtifactsSource: RuntimeCompiledArtifactsSource,
+  nodeId = "__root__",
+): Awaited<ReturnType<typeof getCompiledRuntimeAgentBundle>> {
+  const resolvedAgent = {
+    behaviorRevision: "0".repeat(64),
+    config: { name: "test-agent" },
+  };
+  const root = { agent: resolvedAgent, nodeId };
+
+  return {
+    compiledArtifactsSource,
+    graph: { nodesByNodeId: new Map([[nodeId, root]]), root },
+    nodeId: nodeId === "__root__" ? undefined : nodeId,
+    resolvedAgent,
+  } as never;
+}

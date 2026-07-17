@@ -86,6 +86,7 @@ export function buildAgentInfoResponseFromManifest(
     agent: {
       agentRoot: manifest.agentRoot,
       appRoot: manifest.appRoot,
+      behaviorRevision: manifest.behaviorRevision,
       configSource: manifest.config.source ? toSource(manifest.config.source) : undefined,
       description: manifest.config.description,
       model: {

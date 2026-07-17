@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import type { CompiledAgentManifest } from "./manifest.js";
-import { COMPILED_AGENT_MANIFEST_VERSION, ROOT_COMPILED_AGENT_NODE_ID } from "./manifest.js";
+import {
+  COMPILED_AGENT_MANIFEST_VERSION,
+  ROOT_COMPILED_AGENT_NODE_ID,
+  UNRESOLVED_AGENT_BEHAVIOR_REVISION,
+} from "./manifest.js";
 import { collectModuleRefsForManifest, createCompiledModuleMapSource } from "./module-map.js";
 
 function createManifestWithTool(agentRoot: string): CompiledAgentManifest {
   return {
     agentRoot,
     appRoot: agentRoot,
+    behaviorRevision: UNRESOLVED_AGENT_BEHAVIOR_REVISION,
     config: {
       compaction: {},
       model: {

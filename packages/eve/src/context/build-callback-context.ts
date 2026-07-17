@@ -1,8 +1,9 @@
-import type { SessionContext } from "#public/definitions/callback-context.js";
+import type { AgentIdentity, SessionContext } from "#public/definitions/callback-context.js";
 import type { SkillHandle } from "#execution/skills/types.js";
 import type { SandboxSession } from "#shared/sandbox-session.js";
 import { createSandboxSkillHandle } from "#runtime/skills/sandbox-access.js";
 import { loadContext } from "#context/container.js";
+import { AgentIdentityRegistryKey } from "#context/agent-identity.js";
 import { SandboxKey, SessionKey } from "#context/keys.js";
 
 /**
@@ -16,6 +17,9 @@ export function buildCallbackContext(): SessionContext {
   const session = ctx.require(SessionKey);
 
   return {
+    get agent(): AgentIdentity {
+      return ctx.require(AgentIdentityRegistryKey).active;
+    },
     session: {
       id: session.sessionId,
       auth: session.auth,
@@ -48,6 +52,11 @@ export function buildCallbackContext(): SessionContext {
         );
       }
       return createSandboxSkillHandle(access, identifier);
+    },
+
+    getAgent(nodeId: string): AgentIdentity | undefined {
+      const byNodeId = ctx.require(AgentIdentityRegistryKey).byNodeId;
+      return Object.hasOwn(byNodeId, nodeId) ? byNodeId[nodeId] : undefined;
     },
   };
 }

@@ -18,6 +18,7 @@ const DISCONNECTED_GATEWAY_INFO: AgentInfoResult = {
   agent: {
     agentRoot: "/app/agent",
     appRoot: "/app",
+    behaviorRevision: "0".repeat(64),
     model: {
       endpoint: { kind: "gateway", connected: false },
       id: "openai/gpt-5.5",

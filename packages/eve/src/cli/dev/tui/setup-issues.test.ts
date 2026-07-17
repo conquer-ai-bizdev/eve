@@ -29,6 +29,7 @@ function infoWithRouting(
     agent: {
       agentRoot: "/a",
       appRoot: "/a",
+      behaviorRevision: "0".repeat(64),
       model,
       name: "Agent",
     },

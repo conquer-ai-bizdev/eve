@@ -59,6 +59,13 @@ export interface AuthoredModuleLoadOptions {
   readonly extensionScopeNamespace?: string;
 }
 
+export interface AuthoredModuleBundleOutputOptions {
+  /** Keeps configured external subpaths as logical specifiers for path-independent hashing. */
+  readonly canonicalExternalSpecifiers?: boolean;
+  /** Source-map mode for the generated bundle. Runtime loading keeps inline maps. */
+  readonly sourcemap?: "inline" | false;
+}
+
 function getChannelModuleCache(): Map<string, unknown> | undefined {
   return (globalThis as Record<string, unknown>)[CHANNEL_MODULE_CACHE_KEY] as
     | Map<string, unknown>
@@ -156,6 +163,7 @@ function createFileImportSpecifier(modulePath: string): string {
 export async function bundleAuthoredModuleCode(
   modulePath: string,
   options: AuthoredModuleLoadOptions = {},
+  outputOptions: AuthoredModuleBundleOutputOptions = {},
 ): Promise<string> {
   const channelCache = getChannelModuleCache();
   const packageRoot = resolveAuthoredPackageRoot(modulePath);
@@ -220,7 +228,9 @@ export async function bundleAuthoredModuleCode(
       extensions: RESOLVE_EXTENSIONS,
     }),
     createNodeEsmCompatBannerPlugin({ includeRequire: true }),
-    createPackageBoundaryPlugin(packageRoot, externalDependencies),
+    createPackageBoundaryPlugin(packageRoot, externalDependencies, {
+      canonicalExternalSpecifiers: outputOptions.canonicalExternalSpecifiers === true,
+    }),
   ].filter((plugin) => plugin !== null);
 
   try {
@@ -238,7 +248,7 @@ export async function bundleAuthoredModuleCode(
         codeSplitting: false,
         comments: false,
         format: "esm",
-        sourcemap: "inline",
+        sourcemap: outputOptions.sourcemap ?? "inline",
       },
     });
     return getSingleRolldownChunk(result, `authored module for "${modulePath}"`).code;
@@ -307,6 +317,7 @@ function createAuthoredRelativeExtensionResolverPlugin(input: {
 function createPackageBoundaryPlugin(
   packageRoot: string,
   externalDependencies: readonly string[],
+  outputOptions: { readonly canonicalExternalSpecifiers: boolean },
 ): Record<string, unknown> {
   // The bundler reports importers by realpath while `packageRoot` keeps the
   // caller's spelling (e.g. macOS `/var` vs `/private/var`); compare
@@ -338,6 +349,13 @@ function createPackageBoundaryPlugin(
       );
 
       if (configuredExternalDependency !== undefined) {
+        if (outputOptions.canonicalExternalSpecifiers) {
+          return {
+            external: true,
+            id: source,
+          };
+        }
+
         if (source !== configuredExternalDependency) {
           const resolved = await this.resolve(source, importer, {
             kind: options.kind,

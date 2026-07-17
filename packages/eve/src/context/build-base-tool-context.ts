@@ -42,11 +42,16 @@ export function buildBaseToolContext(
   });
 
   return {
-    ...callbackContext,
+    get agent() {
+      return callbackContext.agent;
+    },
     abortSignal: signal,
     callId: options.toolCallId,
+    getAgent: callbackContext.getAgent,
     operationId,
     getSandbox: async () => bindSandboxAbortSignal(await callbackContext.getSandbox(), signal),
+    getSkill: callbackContext.getSkill,
+    session: callbackContext.session,
     subagents: createSubagentController({
       abortSignal: signal,
       callerSessionId: callbackContext.session.id,

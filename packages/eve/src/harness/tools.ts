@@ -310,11 +310,18 @@ function buildApprovalFn(
     if (definition.approval === undefined) return undefined;
 
     const toolInputRecord = isObject(toolInput) ? toolInput : undefined;
+    const callbackContext = buildCallbackContext();
 
     const status = await definition.approval({
-      ...buildCallbackContext(),
+      get agent() {
+        return callbackContext.agent;
+      },
       approvedTools: input.approvedTools ?? new Set(),
       callId,
+      getAgent: callbackContext.getAgent,
+      getSandbox: callbackContext.getSandbox,
+      getSkill: callbackContext.getSkill,
+      session: callbackContext.session,
       toolInput: toolInputRecord,
       toolName: definition.name,
     });

@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  createCompiledAgentManifest,
+  createCompiledAgentNodeManifest,
+  ROOT_COMPILED_AGENT_NODE_ID,
+} from "#compiler/manifest.js";
 import { buildCallbackContext } from "#context/build-callback-context.js";
+import { buildActiveSessionContext } from "#internal/testing/active-session-context.js";
 import { createTestRuntime } from "#internal/testing/app-harness.js";
+import { classifyModelRouting } from "#internal/classify-model-routing.js";
 import { mockSandbox } from "#internal/testing/mocks/mock-sandbox.js";
 import { mockSkill } from "#internal/testing/mocks/mock-skill.js";
 import type { SandboxSession } from "#public/definitions/sandbox.js";
+import { contextStorage } from "#context/container.js";
+import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
+import { withBundledCompiledArtifacts } from "#runtime/loaders/bundled-artifacts.js";
+import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 
 /**
  * Integration coverage for {@link buildCallbackContext} — the single
@@ -71,6 +82,111 @@ describe("buildCallbackContext – session", () => {
       rootSessionId: "session_parent",
       sessionId: "session_parent",
       turn: { id: "turn_parent_001", sequence: 3 },
+    });
+  });
+});
+
+describe("buildCallbackContext – agent", () => {
+  it("returns the active root identity and supports graph lookup", async () => {
+    const runtime = createTestRuntime({ agent: { name: "root-agent" } });
+
+    const result = await runtime.runAsSession({}, () => {
+      const ctx = buildCallbackContext();
+      return {
+        active: ctx.agent,
+        activeFrozen: Object.isFrozen(ctx.agent),
+        lookup: ctx.getAgent(ctx.agent.nodeId),
+        missing: ctx.getAgent("subagents/missing"),
+        prototypeName: ctx.getAgent("toString"),
+      };
+    });
+
+    expect(result.active).toEqual({
+      behaviorRevision: runtime.manifest.behaviorRevision,
+      name: "root-agent",
+      nodeId: ROOT_COMPILED_AGENT_NODE_ID,
+    });
+    expect(result.lookup).toEqual(result.active);
+    expect(result.missing).toBeUndefined();
+    expect(result.prototypeName).toBeUndefined();
+    expect(result.activeFrozen).toBe(true);
+  });
+
+  it("returns the selected subagent while retaining lookup of the root", async () => {
+    const childNodeId = "subagents/reviewer";
+    const rootRevision = "1".repeat(64);
+    const childRevision = "2".repeat(64);
+    const childAgent = createCompiledAgentNodeManifest({
+      agentRoot: "/app/agent/subagents/reviewer",
+      appRoot: "/app",
+      behaviorRevision: childRevision,
+      config: {
+        description: "Review one result.",
+        model: { id: "openai/gpt-5.4", routing: classifyModelRouting("openai/gpt-5.4") },
+        name: "reviewer",
+      },
+    });
+    const manifest = createCompiledAgentManifest({
+      agentRoot: "/app/agent",
+      appRoot: "/app",
+      behaviorRevision: rootRevision,
+      config: {
+        model: { id: "openai/gpt-5.4", routing: classifyModelRouting("openai/gpt-5.4") },
+        name: "root-agent",
+      },
+      subagentEdges: [{ childNodeId, parentNodeId: ROOT_COMPILED_AGENT_NODE_ID }],
+      subagents: [
+        {
+          agent: childAgent,
+          description: "Review one result.",
+          entryPath: "/app/agent/subagents/reviewer",
+          logicalPath: childNodeId,
+          name: "reviewer",
+          nodeId: childNodeId,
+          rootPath: "/app/agent/subagents/reviewer",
+          sourceId: childNodeId,
+          sourceKind: "module",
+        },
+      ],
+    });
+
+    const result = await withBundledCompiledArtifacts(
+      {
+        manifest,
+        moduleMap: {
+          nodes: {
+            [ROOT_COMPILED_AGENT_NODE_ID]: { modules: {} },
+            [childNodeId]: { modules: {} },
+          },
+        },
+      },
+      async () => {
+        const bundle = await getCompiledRuntimeAgentBundle({
+          compiledArtifactsSource: createBundledRuntimeCompiledArtifactsSource(),
+          nodeId: childNodeId,
+        });
+        const context = buildActiveSessionContext({
+          bundle,
+          sessionId: "session_child",
+          turn: { id: "turn_child", sequence: 1 },
+        });
+
+        return await contextStorage.run(context, () => {
+          const ctx = buildCallbackContext();
+          return { active: ctx.agent, root: ctx.getAgent(ROOT_COMPILED_AGENT_NODE_ID) };
+        });
+      },
+    );
+
+    expect(result.active).toEqual({
+      behaviorRevision: childRevision,
+      name: "reviewer",
+      nodeId: childNodeId,
+    });
+    expect(result.root).toEqual({
+      behaviorRevision: rootRevision,
+      name: "root-agent",
+      nodeId: ROOT_COMPILED_AGENT_NODE_ID,
     });
   });
 });

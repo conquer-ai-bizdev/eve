@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createRuntimeHookRegistry } from "#runtime/hooks/registry.js";
+import { setAgentIdentityContext } from "#runtime/agent-identity-context.js";
 import type { ResolvedHookDefinition } from "#runtime/types.js";
 import type { HandleMessageStreamEvent } from "#protocol/message.js";
 import { ContextContainer, contextStorage } from "./container.js";
@@ -13,14 +14,20 @@ import {
 import { ContinuationTokenKey, SessionIdKey, SessionKey } from "./keys.js";
 
 function createMockBundle(): CompiledBundle {
+  const resolvedAgent = {
+    behaviorRevision: "0".repeat(64),
+    config: { name: "test-agent" },
+    skills: [],
+  } as never;
+  const root = { agent: resolvedAgent, nodeId: "__root__" } as never;
   return {
     adapterRegistry: undefined as never,
     compiledArtifactsSource: undefined as never,
-    graph: undefined as never,
+    graph: { nodesByNodeId: new Map([["__root__", root]]), root },
     hookRegistry: undefined as never,
     moduleMap: undefined as never,
     nodeId: undefined,
-    resolvedAgent: { config: { name: "test-agent" }, skills: [] } as never,
+    resolvedAgent,
     subagentRegistry: undefined as never,
     toolRegistry: undefined as never,
     turnAgent: undefined as never,
@@ -37,7 +44,9 @@ function buildCtx(): ContextContainer {
   });
   ctx.set(ContinuationTokenKey, "test:continuation");
   ctx.set(ChannelKey, { kind: "mock" } as never);
-  ctx.set(BundleKey, createMockBundle());
+  const bundle = createMockBundle();
+  ctx.set(BundleKey, bundle);
+  setAgentIdentityContext(ctx, bundle);
   return ctx;
 }
 

@@ -60,6 +60,8 @@ A few non-`define*` helpers round out the set: `disableTool` and `ExperimentalWo
 
 | Member                      | Use                                                                          |
 | --------------------------- | ---------------------------------------------------------------------------- |
+| `ctx.agent`                 | Current local agent node id, name, and compiler-generated behavior revision  |
+| `ctx.getAgent(nodeId)`      | Look up a local graph node by the id stored on an artifact                   |
 | `ctx.session`               | Current session, turn, auth, and optional parent lineage (read-only)         |
 | `ctx.getSandbox()`          | Live sandbox handle for the current agent                                    |
 | `ctx.getSkill(identifier)`  | Handle for a named skill visible to the current agent                        |

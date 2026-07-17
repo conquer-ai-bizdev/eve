@@ -12,6 +12,7 @@ const AGENT_INFO: AgentInfoResult = {
   agent: {
     agentRoot: "/tmp/weather-agent/agent",
     appRoot: "/tmp/weather-agent",
+    behaviorRevision: "a".repeat(64),
     model: { id: "openai/gpt-5.5" },
     name: "Weather Agent",
   },
@@ -201,6 +202,7 @@ describe("Client request policy", () => {
     const info = await client.info();
 
     expect(info).not.toHaveProperty("ignoredByClient");
+    expect(info.agent.behaviorRevision).toBe("a".repeat(64));
   });
 
   it("rejects a non-Eve response from the agent info route", async () => {

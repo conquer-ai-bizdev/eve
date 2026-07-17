@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRuntimeAdapterRegistry } from "#runtime/channels/registry.js";
 import { ContextContainer } from "#context/container.js";
 import { ContextKey } from "#context/key.js";
+import { AgentIdentityRegistryKey, createAgentIdentityRegistry } from "#context/agent-identity.js";
 import type { CompiledBundle } from "#runtime/sessions/runtime-context-keys.js";
 import { BundleKey, ChannelKey } from "#runtime/sessions/runtime-context-keys.js";
 import { deserializeContext, serializeContext } from "#context/serialize.js";
@@ -95,5 +96,53 @@ describe("ChannelKey codec", () => {
     );
 
     expect(adapter).toEqual({ kind: "http", state: {} });
+  });
+});
+
+describe("AgentIdentityRegistryKey codec", () => {
+  it("serializes only a marker and rederives frozen identities from BundleKey", async () => {
+    const resolvedAgent = {
+      behaviorRevision: "a".repeat(64),
+      config: { name: "root-agent" },
+    };
+    const root = {
+      agent: resolvedAgent,
+      nodeId: "__root__",
+    } as unknown as CompiledBundle["graph"]["root"];
+    const bundle: CompiledBundle = {
+      adapterRegistry: createRuntimeAdapterRegistry({ channels: [] }),
+      compiledArtifactsSource: {} as never,
+      graph: { nodesByNodeId: new Map([[root.nodeId, root]]), root },
+      hookRegistry: undefined as never,
+      moduleMap: { nodes: {} },
+      resolvedAgent: resolvedAgent as never,
+      subagentRegistry: undefined as never,
+      toolRegistry: undefined as never,
+      turnAgent: undefined as never,
+    };
+    const ctx = new ContextContainer();
+    ctx.set(BundleKey, bundle);
+    ctx.set(AgentIdentityRegistryKey, createAgentIdentityRegistry(bundle));
+
+    expect(serializeContext(ctx)[AgentIdentityRegistryKey.name]).toBeNull();
+
+    const codec = AgentIdentityRegistryKey.codec;
+    if (codec === undefined) {
+      throw new Error('Context key "eve.agentIdentityRegistry.v1" is missing a codec.');
+    }
+    const rederived = await codec.deserialize(
+      { active: { behaviorRevision: "forged", name: "forged", nodeId: "toString" } },
+      ctx,
+    );
+
+    expect(rederived.active).toEqual({
+      behaviorRevision: "a".repeat(64),
+      name: "root-agent",
+      nodeId: "__root__",
+    });
+    expect(Object.getPrototypeOf(rederived.byNodeId)).toBeNull();
+    expect(Object.isFrozen(rederived)).toBe(true);
+    expect(Object.isFrozen(rederived.active)).toBe(true);
+    expect(Object.isFrozen(rederived.byNodeId)).toBe(true);
   });
 });

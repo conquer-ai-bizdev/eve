@@ -452,10 +452,16 @@ function createApprovalContext(input: {
   readonly toolName: string;
 }): ApprovalContext {
   return {
+    agent: {
+      behaviorRevision: "0".repeat(64),
+      name: "test-agent",
+      nodeId: "__root__",
+    },
     approvedTools: new Set(),
     callId: "call_1",
     getSandbox: vi.fn(),
     getSkill: vi.fn(),
+    getAgent: vi.fn(),
     session: {
       auth: { current: null, initiator: null },
       id: "test-session",
@@ -788,14 +794,20 @@ describe("framework dynamic tools (no bundler transform)", () => {
     ctx.clearVirtualContext();
     const [tool] = buildDynamicTools(ctx);
 
-    await tool!.execute!({ nested: { b: 2, a: 1 } }, {
-      messages: [],
-      toolCallId: "call-first",
-    });
-    await tool!.execute!({ nested: { a: 1, b: 2 } }, {
-      messages: [],
-      toolCallId: "call-replay",
-    });
+    await tool!.execute!(
+      { nested: { b: 2, a: 1 } },
+      {
+        messages: [],
+        toolCallId: "call-first",
+      },
+    );
+    await tool!.execute!(
+      { nested: { a: 1, b: 2 } },
+      {
+        messages: [],
+        toolCallId: "call-replay",
+      },
+    );
 
     expect(operationIds).toHaveLength(2);
     expect(operationIds[0]).toBe(operationIds[1]);

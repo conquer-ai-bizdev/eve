@@ -40,10 +40,6 @@ export interface LifecycleHooks {
  * `ctx` is always the last argument.
  */
 export interface HookContext extends SessionContext {
-  readonly agent: {
-    readonly name: string;
-    readonly nodeId?: string;
-  };
   readonly channel: {
     readonly kind?: string;
     readonly continuationToken?: string;

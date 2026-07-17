@@ -8,6 +8,12 @@ function sessionContext(
   current: SessionContext["session"]["auth"]["current"] = null,
 ): SessionContext {
   return {
+    agent: {
+      behaviorRevision: "0".repeat(64),
+      name: "test-agent",
+      nodeId: "__root__",
+    },
+    getAgent: vi.fn(),
     getSandbox: vi.fn(),
     getSkill: vi.fn(),
     session: {

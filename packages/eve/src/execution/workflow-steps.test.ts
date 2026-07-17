@@ -310,20 +310,27 @@ describe("dispatchRuntimeActionsStep", () => {
   it("returns a reusable child identity for local background delegation", async () => {
     vi.stubEnv("VERCEL_ENV", "production");
     const compiledArtifactsSource = {} as never;
+    const resolvedAgent = {
+      behaviorRevision: "0".repeat(64),
+      config: { name: "test-agent" },
+    };
+    const root = {
+      agent: resolvedAgent,
+      nodeId: "__root__",
+      sandboxRegistry: { sandbox: null },
+      turnAgent: TestTurnAgent,
+    };
     const compiledBundle = {
       adapterRegistry: {
         adaptersByKind: new Map([[threadContextAdapter.kind, threadContextAdapter]]),
       },
       compiledArtifactsSource,
       graph: {
-        nodesByNodeId: new Map(),
-        root: {
-          sandboxRegistry: { sandbox: null },
-          turnAgent: TestTurnAgent,
-        },
+        nodesByNodeId: new Map([[root.nodeId, root]]),
+        root,
       },
       hookRegistry: createEmptyHookRegistry(),
-      resolvedAgent: { config: {} },
+      resolvedAgent,
       subagentRegistry: {
         subagentsByNodeId: new Map([
           [

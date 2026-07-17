@@ -129,16 +129,23 @@ const testAuth: SessionAuthContext = {
 };
 
 function createMinimalBundle(): Parameters<typeof buildRunContext>[0]["bundle"] {
+  const resolvedAgent = {
+    behaviorRevision: "0".repeat(64),
+    config: { name: "test-agent" },
+  };
+  const root = {
+    agent: resolvedAgent,
+    nodeId: "__root__",
+    sandboxRegistry: { sandbox: null },
+    turnAgent: { skills: [] },
+  };
   return {
     compiledArtifactsSource: {},
     graph: {
-      nodesByNodeId: new Map(),
-      root: {
-        sandboxRegistry: { sandbox: null },
-        turnAgent: { skills: [] },
-      },
+      nodesByNodeId: new Map([[root.nodeId, root]]),
+      root,
     },
-    resolvedAgent: { config: {} },
+    resolvedAgent,
     subagentRegistry: {},
     toolRegistry: {},
     turnAgent: {},

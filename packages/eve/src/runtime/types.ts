@@ -371,6 +371,8 @@ export interface ResolvedDynamicInstructionsResolver extends Readonly<ModuleSour
  * Runtime-owned authored agent model resolved from compiler artifacts.
  */
 export interface ResolvedAgent {
+  /** Compiler-generated content identity for this local agent node's behavior. */
+  readonly behaviorRevision: string;
   readonly channels: readonly ResolvedChannelDefinition[];
   readonly config: ResolvedAgentDefinition;
   readonly connections: readonly ResolvedConnectionDefinition[];

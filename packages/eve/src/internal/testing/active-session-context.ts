@@ -1,5 +1,6 @@
 import type { ChannelAdapter } from "#channel/adapter.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
+import { AgentIdentityRegistryKey, type AgentIdentityRegistry } from "#context/agent-identity.js";
 import {
   SandboxKey,
   type Session,
@@ -9,6 +10,8 @@ import {
 } from "#context/keys.js";
 import { setChannelContext } from "#execution/channel-context.js";
 import type { SandboxAccess } from "#sandbox/state.js";
+import { BundleKey, type CompiledBundle } from "#runtime/sessions/runtime-context-keys.js";
+import { setAgentIdentityContext } from "#runtime/agent-identity-context.js";
 
 /**
  * Seed values used by {@link runWithActiveSessionContext} to set up a test
@@ -19,6 +22,12 @@ import type { SandboxAccess } from "#sandbox/state.js";
  * from this module.
  */
 export interface ActiveSessionInit {
+  readonly bundle?: CompiledBundle;
+  /**
+   * Identity-only seed for harnesses that do not materialize a runtime bundle.
+   * Ignored when `bundle` is present because the bundle is authoritative.
+   */
+  readonly agentIdentityRegistry?: AgentIdentityRegistry;
   readonly sessionId: string;
   readonly turn: SessionTurn;
   readonly parent?: SessionParent;
@@ -42,6 +51,13 @@ export function buildActiveSessionContext(init: ActiveSessionInit): ContextConta
 
   const session: Session = buildSession(init);
   ctx.set(SessionKey, session);
+
+  if (init.bundle !== undefined) {
+    ctx.set(BundleKey, init.bundle);
+    setAgentIdentityContext(ctx, init.bundle);
+  } else if (init.agentIdentityRegistry !== undefined) {
+    ctx.set(AgentIdentityRegistryKey, init.agentIdentityRegistry);
+  }
 
   if (init.sandbox !== undefined) {
     ctx.set(SandboxKey, init.sandbox);

@@ -1,8 +1,10 @@
 import type { SkillHandle } from "#execution/skills/types.js";
 import type { SandboxSession } from "#shared/sandbox-session.js";
 import type { SessionAuth, SessionParent, SessionTurn } from "#context/keys.js";
+import type { AgentIdentity } from "#context/agent-identity.js";
 
 export type { SessionAuth, SessionParent, SessionTurn };
+export type { AgentIdentity };
 
 /**
  * Shared runtime context available to all authored callbacks that run
@@ -13,6 +15,9 @@ export type { SessionAuth, SessionParent, SessionTurn };
  * domain-specific arguments instead.
  */
 export interface SessionContext {
+  /** Identity of the local agent node executing the callback. */
+  readonly agent: AgentIdentity;
+
   /**
    * Active session metadata. Mirrors the `Session` type but exposes the
    * identifier as `id` here, where `Session` names it `sessionId`.
@@ -34,4 +39,10 @@ export interface SessionContext {
    * Returns a {@link SkillHandle} for the named authored skill.
    */
   getSkill(identifier: string): SkillHandle;
+
+  /**
+   * Returns a local agent node by its stored compiled id, or `undefined` when
+   * that id is not part of the current deployment's graph.
+   */
+  getAgent(nodeId: string): AgentIdentity | undefined;
 }

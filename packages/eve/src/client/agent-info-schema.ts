@@ -1,5 +1,7 @@
 import { z } from "#compiled/zod/index.js";
 
+const behaviorRevision = z.string().regex(/^[a-f0-9]{64}$/);
+
 const source = z.object({
   exportName: z.string().optional(),
   logicalPath: z.string(),
@@ -65,6 +67,7 @@ const schedule = entry.extend({
 });
 
 const subagent = entry.extend({
+  behaviorRevision,
   description: z.string(),
   entryPath: z.string(),
   nodeId: z.string(),
@@ -123,6 +126,7 @@ export const AgentInfoResultSchema = z.object({
   agent: z.object({
     agentRoot: z.string(),
     appRoot: z.string(),
+    behaviorRevision,
     configSource: source.optional(),
     description: z.string().optional(),
     model: z.object({

@@ -5,12 +5,51 @@ description: "Runtime helpers: ctx.session, ctx.getSandbox, ctx.getSkill, and de
 
 eve exposes runtime state through the `ctx` parameter passed to tool `execute`, hook handlers, channel event handlers, and connection auth/header resolvers:
 
+- `ctx.agent`: compiler-owned identity of the local agent node executing the callback
+- `ctx.getAgent(nodeId)`: look up another local node by its stored compiled id
 - `ctx.session`: session metadata, turn, auth, and parent lineage
 - `ctx.getSandbox()`: live sandbox handle for the current agent
 - `ctx.getSkill(identifier)`: handle for a named skill visible to the current agent
 - `defineState(name, initial)`: typed durable state with `get()` and `update()` (imported from `eve/context`)
 
 These APIs work only inside active authored runtime execution, including tools, channel event handlers, and authored hooks. They throw when called outside a managed context.
+
+## `ctx.agent` and `ctx.getAgent(nodeId)`
+
+`ctx.agent` identifies the root or declared subagent running the callback:
+
+```ts
+const current = ctx.agent;
+// { nodeId: "subagents/researcher", name: "researcher", behaviorRevision: "..." }
+
+const producer = ctx.getAgent(storedProducerNodeId);
+if (producer?.behaviorRevision !== storedProducerRevision) {
+  // The stored artifact was produced by an older compiled behavior.
+}
+```
+
+`nodeId` is the id stored in the compiled graph. The root id is `__root__`.
+`getAgent` returns `undefined` when the id is not part of the current local graph;
+remote agents are separate deployments and are not returned.
+
+`behaviorRevision` is a SHA-256 identity generated independently for each local
+node. It covers the node's normalized compiled definition, instructions, tool
+schemas, materialized skill and workspace bytes, direct subagent descriptors,
+the eve runtime version, and bundled authored modules with statically imported
+repo-local dependencies and assets. It also includes canonical dependency
+metadata from the app and workspace package manifests plus the nearest
+package-manager lockfile. Absolute checkout roots and other agent nodes'
+internal behavior are excluded.
+
+The revision is conservative content identity, not a semantic-equivalence or
+security proof. Runtime values such as environment variables and secrets are
+not inputs. A dependency metadata or lockfile change invalidates every local
+node, even when only one node imports the changed package. External package
+subpaths are represented by logical specifiers, not checkout paths. Without a
+lockfile, or when `node_modules` is changed manually without updating package
+metadata or the lockfile, installed package byte changes are not detected.
+Files loaded at runtime through `fs` or `new URL(..., import.meta.url)` are not
+covered unless they are also imported statically.
 
 ## `ctx.session`
 

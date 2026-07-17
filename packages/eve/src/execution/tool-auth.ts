@@ -91,7 +91,17 @@ function buildToolContext(input: {
   const { scope, justAuthorizedScopes, inlineAuthState, toolInput } = input;
   const base = buildBaseToolContext(input.options, { input: toolInput, name: scope });
   return {
-    ...base,
+    get agent() {
+      return base.agent;
+    },
+    abortSignal: base.abortSignal,
+    callId: base.callId,
+    getAgent: base.getAgent,
+    getSandbox: base.getSandbox,
+    getSkill: base.getSkill,
+    operationId: base.operationId,
+    session: base.session,
+    subagents: base.subagents,
     async getToken(provider?: ToolAuthProvider, options?: ToolAuthOptions): Promise<TokenResult> {
       if (provider === undefined) throw missingProviderError("ctx.getToken");
       return await resolveInlineToken({

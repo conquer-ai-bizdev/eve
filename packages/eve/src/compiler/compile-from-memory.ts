@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { JsonObject } from "#shared/json.js";
 import { classifyModelRouting } from "#internal/classify-model-routing.js";
 import {
@@ -121,6 +123,11 @@ export function compileFromMemory(input: CompileFromMemoryInput): CompileFromMem
   const manifest = createCompiledAgentManifest({
     agentRoot,
     appRoot,
+    behaviorRevision: createMemoryBehaviorRevision({
+      config,
+      skills,
+      tools,
+    }),
     config,
     skills,
     tools,
@@ -140,6 +147,13 @@ export function compileFromMemory(input: CompileFromMemoryInput): CompileFromMem
     manifest,
     moduleMap,
   };
+}
+
+function createMemoryBehaviorRevision(value: unknown): string {
+  return createHash("sha256")
+    .update("eve-memory-agent-behavior-revision-v1\0")
+    .update(JSON.stringify(value))
+    .digest("hex");
 }
 
 function createMemorySourceId(logicalPath: string): string {

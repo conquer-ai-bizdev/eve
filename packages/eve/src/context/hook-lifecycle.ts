@@ -5,7 +5,7 @@ import type { RuntimeHookRegistry } from "#runtime/hooks/registry.js";
 import { buildCallbackContext } from "#context/build-callback-context.js";
 import { createLogger, logError } from "#internal/logging.js";
 import type { ContextContainer } from "./container.js";
-import { BundleKey, ChannelKey } from "#runtime/sessions/runtime-context-keys.js";
+import { ChannelKey } from "#runtime/sessions/runtime-context-keys.js";
 import { ContinuationTokenKey } from "./keys.js";
 
 const log = createLogger("hook.lifecycle");
@@ -60,7 +60,6 @@ export async function dispatchStreamEventHooks(input: {
 
 /** Builds the {@link HookContext} surfaced to one handler. */
 function buildHookContext(ctx: ContextContainer): HookContext {
-  const bundle = ctx.require(BundleKey);
   const channelAdapter = ctx.get(ChannelKey);
   const continuationToken = ctx.get(ContinuationTokenKey);
   const kind = channelAdapter !== undefined ? getAdapterKind(channelAdapter) : undefined;
@@ -68,10 +67,6 @@ function buildHookContext(ctx: ContextContainer): HookContext {
 
   return {
     ...callbackCtx,
-    agent: {
-      name: bundle.resolvedAgent.config.name ?? "agent",
-      nodeId: bundle.nodeId,
-    },
     channel: {
       kind,
       continuationToken,

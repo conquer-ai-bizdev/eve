@@ -102,6 +102,7 @@ export async function resolveAgent(input: ResolveAgentInput): Promise<ResolvedAg
   const instructions = createResolvedInstructionsDefinition(input.manifest.instructions);
   const workspaceResourceRoot = input.manifest.workspaceResourceRoot;
   const resolvedAgent: ResolvedAgent = {
+    behaviorRevision: input.manifest.behaviorRevision,
     channels: resolvedChannels,
     config: createResolvedAgentConfig(input.manifest),
     connections: resolvedConnections,

@@ -4,6 +4,21 @@ import { compiledAgentManifestSchema, createCompiledAgentManifest } from "#compi
 import { classifyModelRouting } from "#internal/classify-model-routing.js";
 
 describe("compiledAgentManifestSchema", () => {
+  it("preserves a compiler-generated behavior revision", () => {
+    const behaviorRevision = "a".repeat(64);
+    const manifest = createCompiledAgentManifest({
+      agentRoot: "/app/agent",
+      appRoot: "/app",
+      behaviorRevision,
+      config: {
+        model: { id: "openai/gpt-5.5", routing: classifyModelRouting("openai/gpt-5.5") },
+        name: "app",
+      },
+    });
+
+    expect(compiledAgentManifestSchema.parse(manifest).behaviorRevision).toBe(behaviorRevision);
+  });
+
   it("preserves reasoning configuration", () => {
     const manifest = createCompiledAgentManifest({
       agentRoot: "/app/agent",

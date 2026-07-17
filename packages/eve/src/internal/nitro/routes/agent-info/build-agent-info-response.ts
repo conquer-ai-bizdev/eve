@@ -92,6 +92,7 @@ export interface AgentInfoScheduleEntry extends AgentInfoSource {
 }
 
 export interface AgentInfoSubagentEntry extends AgentInfoSource {
+  readonly behaviorRevision: string;
   readonly description: string;
   readonly entryPath: string;
   readonly name: string;
@@ -163,6 +164,7 @@ export interface AgentInfoResponse {
   readonly agent: {
     readonly agentRoot: string;
     readonly appRoot: string;
+    readonly behaviorRevision: string;
     readonly configSource?: AgentInfoSource;
     readonly description?: string;
     readonly model: {
@@ -221,6 +223,7 @@ export function buildAgentInfoResponse(
     agent: {
       agentRoot: agent.metadata.agentRoot,
       appRoot: agent.metadata.appRoot,
+      behaviorRevision: agent.behaviorRevision,
       configSource: agent.config.source ? toSource(agent.config.source) : undefined,
       description: agent.config.description,
       model: {
@@ -485,6 +488,7 @@ function renderSandbox(sandbox: ResolvedSandboxDefinition | null): AgentInfoSand
 export function renderSubagent(subagent: CompiledSubagentNode): AgentInfoSubagentEntry {
   return {
     ...toSource(subagent),
+    behaviorRevision: subagent.agent.behaviorRevision,
     description: subagent.description,
     entryPath: subagent.entryPath,
     name: subagent.name,

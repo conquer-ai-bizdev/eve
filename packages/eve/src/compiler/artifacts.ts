@@ -15,6 +15,7 @@ import type { CompiledAgentManifest } from "#compiler/manifest.js";
 import { createCompiledModuleMapSource } from "#compiler/module-map.js";
 import { compileAgentManifest } from "#compiler/normalize-manifest.js";
 import { materializeWorkspaceResources } from "#compiler/workspace-resources.js";
+import { attachAgentBehaviorRevisions } from "#compiler/agent-behavior-revision.js";
 
 /**
  * Stable diagnostics artifact kind emitted by the compiler.
@@ -203,9 +204,13 @@ export async function writeCompilerArtifacts(
 ): Promise<WriteCompilerArtifactsResult> {
   const paths = resolveCompilerArtifactPaths(input.appRoot);
   const diagnosticsArtifact = createDiscoveryDiagnosticsArtifact(input.diagnostics);
-  const compiledManifest = await materializeWorkspaceResources({
+  const manifestWithWorkspaceResources = await materializeWorkspaceResources({
     compileDirectoryPath: paths.compileDirectoryPath,
     manifest: await compileAgentManifest(input.manifest),
+  });
+  const compiledManifest = await attachAgentBehaviorRevisions({
+    eveVersion: resolveInstalledPackageInfo().version,
+    manifest: manifestWithWorkspaceResources,
   });
   const compiledManifestJson = serializeArtifactJson(compiledManifest);
   const discoveryManifestJson = serializeArtifactJson(input.manifest);

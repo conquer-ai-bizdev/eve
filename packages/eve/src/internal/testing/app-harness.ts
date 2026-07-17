@@ -1,8 +1,13 @@
 import type { JsonObject } from "#shared/json.js";
 import type { ChannelAdapter } from "#channel/adapter.js";
 import { compileFromMemory } from "#compiler/compile-from-memory.js";
-import type { CompiledAgentManifest, CompiledSkillDefinition } from "#compiler/manifest.js";
+import {
+  type CompiledAgentManifest,
+  type CompiledSkillDefinition,
+  ROOT_COMPILED_AGENT_NODE_ID,
+} from "#compiler/manifest.js";
 import type { CompiledModuleMap } from "#compiler/module-map.js";
+import { createAgentIdentityRegistry } from "#context/agent-identity.js";
 import type { SessionParent, SessionTurn } from "#context/keys.js";
 import { installBundledCompiledArtifacts } from "#runtime/loaders/bundled-artifacts.js";
 import type { SandboxAccess } from "#sandbox/state.js";
@@ -175,6 +180,7 @@ export function createTestRuntime(descriptor: TestAppDescriptor = {}): TestRunti
   const session = createRuntimeSession(descriptor.agent?.name ?? DEFAULT_AGENT_NAME);
   const tools = descriptor.tools ?? [];
   const skills = descriptor.skills ?? [];
+  const agentIdentityRegistry = createManifestAgentIdentityRegistry(manifest);
 
   function install(): void {
     installBundledCompiledArtifacts({ manifest, moduleMap });
@@ -193,9 +199,9 @@ export function createTestRuntime(descriptor: TestAppDescriptor = {}): TestRunti
   ): Promise<T> {
     const sessionInit: ActiveSessionInit = buildActiveSessionContextInit(init);
 
-    return await run(async () => {
-      return await runWithActiveSessionContext(sessionInit, fn);
-    });
+    return await run(
+      async () => await runWithActiveSessionContext({ ...sessionInit, agentIdentityRegistry }, fn),
+    );
   }
 
   function reset(): void {
@@ -242,6 +248,34 @@ export function createTestRuntime(descriptor: TestAppDescriptor = {}): TestRunti
 
 // Exported for the internal active-session-context helper.
 export { buildActiveSessionContext };
+
+function createManifestAgentIdentityRegistry(manifest: CompiledAgentManifest) {
+  const root = {
+    agent: {
+      behaviorRevision: manifest.behaviorRevision,
+      config: { name: manifest.config.name },
+    },
+    nodeId: ROOT_COMPILED_AGENT_NODE_ID,
+  };
+  const nodesByNodeId = new Map<string, typeof root>([[ROOT_COMPILED_AGENT_NODE_ID, root]]);
+
+  for (const node of manifest.subagents) {
+    nodesByNodeId.set(node.nodeId, {
+      agent: {
+        behaviorRevision: node.agent.behaviorRevision,
+        config: { name: node.agent.config.name },
+      },
+      nodeId: node.nodeId,
+    });
+  }
+
+  return createAgentIdentityRegistry({
+    graph: {
+      nodesByNodeId,
+      root,
+    },
+  });
+}
 
 function buildActiveSessionContextInit(init: RunAsSessionInit | undefined): ActiveSessionInit {
   const sessionId = init?.sessionId ?? "session_test";
