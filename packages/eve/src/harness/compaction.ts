@@ -112,12 +112,11 @@ export async function compactMessages(
   abortSignal?: AbortSignal,
 ): Promise<ModelMessage[]> {
   const { conversation, previousCheckpoint } = extractPreviousCheckpoint(messages);
-  let keep = selectRecentWindowSize(conversation, config);
+  let { older, recentUnits } = selectRecentUnits(conversation, config);
 
   while (true) {
-    const { older, recent } = splitMessagesForCompaction(conversation, keep);
     if (older.length === 0 && previousCheckpoint === undefined) {
-      return keepNonToolResultMessages(recent);
+      return preserveRecentUnits(recentUnits);
     }
 
     const summaryPrompt = createCompactionPrompt({ messages: older, previousCheckpoint });
@@ -133,11 +132,11 @@ export async function compactMessages(
       temperature: 0,
     });
 
-    // Keep recent context as plain conversation: tool results are dropped (the
-    // summary above already captures the older ones) and assistant tool calls
-    // are stripped, so no tool_use survives without its result. The summarized
-    // older region is the durable record of tool activity.
-    const keptTail = keepNonToolResultMessages(recent);
+    // Keep complete recent tool exchanges intact so successful work does not
+    // disappear between the summarized region and the retained tail. Standalone
+    // messages still use the conservative sanitizer below, which removes orphaned
+    // tool activity and reasoning-only assistant content.
+    const keptTail = preserveRecentUnits(recentUnits);
 
     // The kept tail may be empty or trail with an assistant message; the summary
     // assistant message also precedes it. Providers that don't support assistant
@@ -156,11 +155,16 @@ export async function compactMessages(
       ...trailingAssistantGuard,
     ];
 
-    if (estimateTokens(compacted) <= config.threshold || keep === 0) {
+    if (estimateTokens(compacted) <= config.threshold || recentUnits.length === 0) {
       return compacted;
     }
 
-    keep -= 1;
+    const [oldestRecent, ...remainingRecent] = recentUnits;
+    if (oldestRecent === undefined) {
+      return compacted;
+    }
+    older = [...older, ...oldestRecent.messages];
+    recentUnits = remainingRecent;
   }
 }
 
@@ -185,12 +189,10 @@ function extractPreviousCheckpoint(messages: readonly ModelMessage[]): {
 }
 
 /**
- * Returns the kept tail for a compacted history: recent messages with tool
- * activity removed. Tool-result messages are dropped, and assistant messages are
- * reduced to their text content (tool-call and reasoning parts stripped) so the
- * rebuilt history never carries a tool_use without its matching result.
- * Assistant messages with no remaining text are dropped; user messages are kept
- * verbatim.
+ * Sanitizes standalone or unmatched recent messages. Tool-result messages are
+ * dropped, and assistant messages are reduced to text so the rebuilt history
+ * never carries an orphaned tool call or result. Complete matched tool exchanges
+ * bypass this sanitizer and are preserved atomically by {@link preserveRecentUnit}.
  */
 function keepNonToolResultMessages(messages: readonly ModelMessage[]): ModelMessage[] {
   const kept: ModelMessage[] = [];
@@ -232,31 +234,139 @@ function assistantMessageText(message: ModelMessage): string {
     .trim();
 }
 
-function selectRecentWindowSize(
+interface CompactionUnit {
+  readonly messages: readonly ModelMessage[];
+  readonly preserveExact: boolean;
+}
+
+function selectRecentUnits(
   messages: readonly ModelMessage[],
   config: CompactionConfig,
-): number {
-  const maxKeep = Math.min(config.recentWindowSize, Math.max(messages.length - 1, 0));
+): {
+  readonly older: ModelMessage[];
+  readonly recentUnits: CompactionUnit[];
+} {
+  const units = groupCompactionUnits(messages);
   const reserve = resolveCompactionSummaryReserve(config);
-  let keep = 0;
+  let keepMessages = 0;
   let recentTokens = 0;
+  let firstRecentUnit = units.length;
 
-  for (let index = messages.length - 1; index >= 0 && keep < maxKeep; index -= 1) {
+  for (let index = units.length - 1; index > 0; index -= 1) {
+    const unit = units[index];
+    if (unit === undefined) {
+      continue;
+    }
+
+    const preserved = preserveRecentUnit(unit);
+    if (preserved.length === 0) {
+      break;
+    }
+
+    if (keepMessages + unit.messages.length > config.recentWindowSize) {
+      break;
+    }
+
+    const unitTokens = estimateTokens(preserved);
+    if (recentTokens + unitTokens + reserve > config.threshold) {
+      break;
+    }
+
+    recentTokens += unitTokens;
+    keepMessages += unit.messages.length;
+    firstRecentUnit = index;
+  }
+
+  return {
+    older: units.slice(0, firstRecentUnit).flatMap((unit) => [...unit.messages]),
+    recentUnits: units.slice(firstRecentUnit),
+  };
+}
+
+function groupCompactionUnits(messages: readonly ModelMessage[]): CompactionUnit[] {
+  const units: CompactionUnit[] = [];
+
+  for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
     if (message === undefined) {
       continue;
     }
 
-    const messageTokens = estimateTokens([message]);
-    if (recentTokens + messageTokens + reserve > config.threshold) {
-      break;
+    const callIds = assistantToolCallIds(message);
+    if (callIds.size === 0) {
+      units.push({ messages: [message], preserveExact: false });
+      continue;
     }
 
-    recentTokens += messageTokens;
-    keep += 1;
+    const exchange: ModelMessage[] = [message];
+    const resultIds = toolResultIds(message);
+    let cursor = index + 1;
+    while (cursor < messages.length && messages[cursor]?.role === "tool") {
+      const resultMessage = messages[cursor];
+      if (resultMessage !== undefined) {
+        exchange.push(resultMessage);
+        for (const id of toolResultIds(resultMessage)) {
+          resultIds.add(id);
+        }
+      }
+      cursor += 1;
+    }
+
+    const complete =
+      callIds.size === resultIds.size &&
+      [...callIds].every((id) => resultIds.has(id)) &&
+      [...resultIds].every((id) => callIds.has(id));
+
+    if (complete) {
+      units.push({ messages: exchange, preserveExact: true });
+      index = cursor - 1;
+      continue;
+    }
+
+    units.push({ messages: [message], preserveExact: false });
   }
 
-  return keep;
+  return units;
+}
+
+function assistantToolCallIds(message: ModelMessage): Set<string> {
+  if (message.role !== "assistant" || typeof message.content === "string") {
+    return new Set();
+  }
+
+  return new Set(
+    message.content
+      .filter(
+        (part): part is Extract<ModelMessageContentPart, { type: "tool-call" }> =>
+          part.type === "tool-call",
+      )
+      .map((part) => part.toolCallId),
+  );
+}
+
+function toolResultIds(message: ModelMessage): Set<string> {
+  if (typeof message.content === "string") {
+    return new Set();
+  }
+
+  return new Set(
+    message.content
+      .filter(
+        (part): part is Extract<ModelMessageContentPart, { type: "tool-result" }> =>
+          part.type === "tool-result",
+      )
+      .map((part) => part.toolCallId),
+  );
+}
+
+function preserveRecentUnits(units: readonly CompactionUnit[]): ModelMessage[] {
+  return units.flatMap((unit) => preserveRecentUnit(unit));
+}
+
+function preserveRecentUnit(unit: CompactionUnit): ModelMessage[] {
+  return unit.preserveExact
+    ? unit.messages.map((message) => message)
+    : keepNonToolResultMessages(unit.messages);
 }
 
 function resolveCompactionSummaryReserve(config: CompactionConfig): number {
@@ -264,24 +374,4 @@ function resolveCompactionSummaryReserve(config: CompactionConfig): number {
     COMPACTION_SUMMARY_RESERVE_TOKENS,
     Math.max(64, Math.floor(config.threshold / 4)),
   );
-}
-
-function splitMessagesForCompaction(
-  messages: readonly ModelMessage[],
-  keep: number,
-): {
-  readonly older: ModelMessage[];
-  readonly recent: ModelMessage[];
-} {
-  if (keep <= 0) {
-    return {
-      older: [...messages],
-      recent: [],
-    };
-  }
-
-  return {
-    older: messages.slice(0, -keep),
-    recent: messages.slice(-keep),
-  };
 }

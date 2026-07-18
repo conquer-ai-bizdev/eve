@@ -467,7 +467,7 @@ describe("compactMessages", () => {
     expect(vi.mocked(generateText)).toHaveBeenCalledTimes(1);
   });
 
-  it("drops tool results and strips assistant tool calls from the kept tail", async () => {
+  it("preserves a complete recent tool exchange exactly", async () => {
     const { generateText } = await import("ai");
 
     vi.mocked(generateText).mockResolvedValue({
@@ -506,25 +506,199 @@ describe("compactMessages", () => {
       threshold: 100_000,
     });
 
-    // No tool-result message and no tool_use/tool_result part survives anywhere,
-    // so the rebuilt history has no dangling tool calls.
-    for (const message of result) {
-      expect(message.role).not.toBe("tool");
-      if (Array.isArray(message.content)) {
-        for (const part of message.content) {
-          expect(part.type).not.toBe("tool-call");
-          expect(part.type).not.toBe("tool-result");
-        }
-      }
-    }
-
-    // User messages are kept; the assistant tool-call turn is reduced to its text.
+    // The matched call and result survive unchanged and in order. This keeps
+    // recent completed work available without creating a dangling tool call.
     expect(result).toEqual([
       { content: "Summary of our conversation so far:", role: "user" },
       { content: "summary", role: "assistant" },
       { content: "do the thing", role: "user" },
-      { content: "Running the tool.", role: "assistant" },
+      messages[3],
+      messages[4],
       { content: "All done.", role: "assistant" },
+      { content: "Continue.", role: "user" },
+    ]);
+  });
+
+  it("preserves a native provider tool call and result in one assistant message", async () => {
+    const { generateText } = await import("ai");
+
+    vi.mocked(generateText).mockResolvedValue({ text: "summary" } as Awaited<
+      ReturnType<typeof generateText>
+    >);
+
+    const nativeExchange: ModelMessage = {
+      content: [
+        {
+          input: { query: "latest result" },
+          providerExecuted: true,
+          toolCallId: "search-1",
+          toolName: "web_search",
+          type: "tool-call",
+        },
+        {
+          output: { type: "json", value: { results: ["current"] } },
+          toolCallId: "search-1",
+          toolName: "web_search",
+          type: "tool-result",
+        },
+      ],
+      role: "assistant",
+    };
+    const messages: ModelMessage[] = [
+      { content: "old context", role: "user" },
+      { content: "older reply", role: "assistant" },
+      nativeExchange,
+    ];
+
+    const model = {} as Parameters<typeof compactMessages>[1];
+    const result = await compactMessages(messages, model, {
+      recentWindowSize: 1,
+      threshold: 100_000,
+    });
+
+    expect(result).toEqual([
+      { content: "Summary of our conversation so far:", role: "user" },
+      { content: "summary", role: "assistant" },
+      nativeExchange,
+      { content: "Continue.", role: "user" },
+    ]);
+  });
+
+  it("preserves a complete parallel tool-call batch atomically", async () => {
+    const { generateText } = await import("ai");
+
+    vi.mocked(generateText).mockResolvedValue({ text: "summary" } as Awaited<
+      ReturnType<typeof generateText>
+    >);
+
+    const callMessage: ModelMessage = {
+      content: [
+        {
+          input: { path: "first" },
+          toolCallId: "call-1",
+          toolName: "read",
+          type: "tool-call",
+        },
+        {
+          input: { path: "second" },
+          toolCallId: "call-2",
+          toolName: "read",
+          type: "tool-call",
+        },
+      ],
+      role: "assistant",
+    };
+    const resultMessage: ModelMessage = {
+      content: [
+        {
+          output: { type: "json", value: { value: "first result" } },
+          toolCallId: "call-1",
+          toolName: "read",
+          type: "tool-result",
+        },
+        {
+          output: { type: "json", value: { value: "second result" } },
+          toolCallId: "call-2",
+          toolName: "read",
+          type: "tool-result",
+        },
+      ],
+      role: "tool",
+    };
+    const messages: ModelMessage[] = [
+      { content: "old context", role: "user" },
+      { content: "older reply", role: "assistant" },
+      callMessage,
+      resultMessage,
+    ];
+
+    const model = {} as Parameters<typeof compactMessages>[1];
+    const result = await compactMessages(messages, model, {
+      recentWindowSize: 2,
+      threshold: 100_000,
+    });
+
+    expect(result).toEqual([
+      { content: "Summary of our conversation so far:", role: "user" },
+      { content: "summary", role: "assistant" },
+      callMessage,
+      resultMessage,
+    ]);
+  });
+
+  it("moves an incomplete parallel tool-call batch wholly into the summary", async () => {
+    const { generateText } = await import("ai");
+
+    vi.mocked(generateText).mockResolvedValue({
+      text: "summary includes incomplete batch",
+    } as Awaited<ReturnType<typeof generateText>>);
+
+    const messages: ModelMessage[] = [
+      { content: "old context", role: "user" },
+      {
+        content: [
+          { input: {}, toolCallId: "call-1", toolName: "read", type: "tool-call" },
+          { input: {}, toolCallId: "call-2", toolName: "read", type: "tool-call" },
+        ],
+        role: "assistant",
+      },
+      {
+        content: [
+          {
+            output: { type: "json", value: { ok: true } },
+            toolCallId: "call-1",
+            toolName: "read",
+            type: "tool-result",
+          },
+        ],
+        role: "tool",
+      },
+    ];
+
+    const model = {} as Parameters<typeof compactMessages>[1];
+    const result = await compactMessages(messages, model, {
+      recentWindowSize: 10,
+      threshold: 100_000,
+    });
+
+    expect(result).toEqual([
+      { content: "Summary of our conversation so far:", role: "user" },
+      { content: "summary includes incomplete batch", role: "assistant" },
+      { content: "Continue.", role: "user" },
+    ]);
+  });
+
+  it("never preserves an unmatched recent tool result", async () => {
+    const { generateText } = await import("ai");
+
+    vi.mocked(generateText).mockResolvedValue({
+      text: "Summary includes the orphaned result",
+    } as Awaited<ReturnType<typeof generateText>>);
+
+    const messages: ModelMessage[] = [
+      { content: "old context", role: "user" },
+      {
+        content: [
+          {
+            output: { type: "json", value: { ok: true } },
+            toolCallId: "missing-call",
+            toolName: "run",
+            type: "tool-result",
+          },
+        ],
+        role: "tool",
+      },
+    ];
+
+    const model = {} as Parameters<typeof compactMessages>[1];
+    const result = await compactMessages(messages, model, {
+      recentWindowSize: 10,
+      threshold: 100_000,
+    });
+
+    expect(result).toEqual([
+      { content: "Summary of our conversation so far:", role: "user" },
+      { content: "Summary includes the orphaned result", role: "assistant" },
       { content: "Continue.", role: "user" },
     ]);
   });

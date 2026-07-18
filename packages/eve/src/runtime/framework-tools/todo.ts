@@ -45,13 +45,19 @@ function formatTodoSummary(state: TodoState): string | undefined {
     return `- [${check}] [${item.priority}] ${item.content}`;
   });
 
-  return `[Your task list was preserved across context compaction]\n${lines.join("\n")}`;
+  return [
+    "[Last explicitly written task-list snapshot]",
+    "This snapshot may be stale because tool work can finish before the list is updated.",
+    "Reconcile it with the checkpoint and preserved tool results. Do not repeat work that those sources prove is complete solely because this snapshot says pending or in progress.",
+    ...lines,
+  ].join("\n");
 }
 
 /**
- * Builds the message that re-injects the current todo list after the harness
- * compacts message history, so the agent keeps its task list across
- * compaction. Returns `undefined` when there is no list to preserve.
+ * Builds the message that re-injects the last explicitly written todo snapshot
+ * after the harness compacts message history. The message labels the snapshot
+ * as potentially stale so it cannot override newer checkpoint or tool evidence.
+ * Returns `undefined` when there is no list to preserve.
  */
 export function getTodoCompactionMessage(): ModelMessage | undefined {
   const state = loadContext().get(TodoStateKey);

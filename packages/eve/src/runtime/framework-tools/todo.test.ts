@@ -148,7 +148,10 @@ describe("getTodoCompactionMessage", () => {
 
     expect(message).toBeDefined();
     const text = String(message?.content ?? "");
-    expect(text).toContain("[Your task list was preserved");
+    expect(text).toContain("[Last explicitly written task-list snapshot]");
+    expect(text).toContain("may be stale");
+    expect(text).toContain("Do not repeat work");
+    expect(text).toContain("checkpoint and preserved tool results");
     expect(text).toContain("[x] [high] Fix bug");
     expect(text).toContain("[ ] [medium] Write tests");
     expect(text).toContain("[-] [low] Cancelled task");
