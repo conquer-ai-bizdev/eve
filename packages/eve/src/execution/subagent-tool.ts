@@ -65,6 +65,8 @@ export function buildSubagentRunInput(input: {
    */
   readonly fanoutSize?: number;
   readonly initiatorAuth: SessionAuthContext | null;
+  /** Sandbox session already shared by a built-in copy of this agent. */
+  readonly inheritedSandboxSessionId?: string;
   /** Hook token owned by the workflow currently waiting for this child. */
   readonly parentContinuationToken?: string;
   readonly session: HarnessSession;
@@ -104,21 +106,28 @@ export function buildSubagentRunInput(input: {
     inheritedLimits.maxSubagents = session.workflowMaxSubagents;
   }
 
+  const adapterState: Record<string, unknown> = {
+    callId: action.callId,
+    parentContinuationToken: input.parentContinuationToken ?? session.continuationToken,
+    parentSessionId: session.sessionId,
+    subagentName: action.subagentName,
+  };
+  if (isBackgroundSubagentCall(action)) {
+    adapterState.background = true;
+  }
+  if (action.subagentName === "agent") {
+    adapterState.sandboxSessionId = input.inheritedSandboxSessionId ?? session.sessionId;
+    if (session.sandboxState) {
+      adapterState.parentSandboxState = session.sandboxState;
+    }
+  }
+
   const runInput: {
     -readonly [K in keyof RunInput]: RunInput[K];
   } = {
     adapter: {
       kind: SUBAGENT_ADAPTER_KIND,
-      state: {
-        ...(isBackgroundSubagentCall(action) ? { background: true } : {}),
-        callId: action.callId,
-        parentContinuationToken: input.parentContinuationToken ?? session.continuationToken,
-        parentSessionId: session.sessionId,
-        subagentName: action.subagentName,
-        ...(action.subagentName === "agent" && session.sandboxState
-          ? { parentSandboxState: session.sandboxState, sandboxSessionId: session.sessionId }
-          : {}),
-      },
+      state: adapterState,
     },
     auth,
     capabilities,

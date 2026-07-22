@@ -165,7 +165,9 @@ function createStubSession(overrides: Partial<HarnessSession> = {}): HarnessSess
   };
 }
 
-function createSerializedContext(): Record<string, unknown> {
+function createSerializedContext(
+  channel: ChannelAdapter = threadContextAdapter,
+): Record<string, unknown> {
   const ctx = new ContextContainer();
   ctx.set(AuthKey, null);
   ctx.set(BundleKey, {
@@ -186,7 +188,7 @@ function createSerializedContext(): Record<string, unknown> {
     toolRegistry: {},
     turnAgent: TestTurnAgent,
   } as never);
-  ctx.set(ChannelKey, threadContextAdapter);
+  ctx.set(ChannelKey, channel);
   ctx.set(ContinuationTokenKey, "http:thread-context");
   ctx.set(ModeKey, "conversation");
   ctx.set(SessionIdKey, "session-1");
@@ -427,6 +429,70 @@ describe("dispatchRuntimeActionsStep", () => {
     });
     expect(prepared?.input.input.message).toContain("investigate latest routing");
     expect(prepared?.input.input.message).not.toContain("Runtime action event description.");
+  });
+
+  it("keeps the inherited sandbox session when an agent copy delegates again", async () => {
+    const compiledBundle = {
+      adapterRegistry: {
+        adaptersByKind: new Map([[threadContextAdapter.kind, threadContextAdapter]]),
+      },
+      compiledArtifactsSource: {},
+      graph: {
+        nodesByNodeId: new Map(),
+        root: {
+          sandboxRegistry: { sandbox: null },
+          turnAgent: TestTurnAgent,
+        },
+      },
+      hookRegistry: createEmptyHookRegistry(),
+      resolvedAgent: { config: {} },
+      subagentRegistry: { subagentsByNodeId: new Map() },
+      toolRegistry: {},
+      turnAgent: TestTurnAgent,
+    } as never;
+    vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue(compiledBundle);
+
+    const session = setPendingRuntimeActionBatch({
+      actions: [
+        {
+          callId: "call-nested",
+          description: "Delegate to a fresh copy.",
+          input: { message: "inspect the shared workspace" },
+          kind: "subagent-call",
+          name: "agent",
+          nodeId: "__root__",
+          subagentName: "agent",
+        },
+      ],
+      event: { sequence: 0, stepIndex: 0, turnId: "turn_0" },
+      responseMessages: [],
+      session: createStubSession({
+        continuationToken: "child-token",
+        sessionId: "child-session",
+      }),
+    });
+    installSessionStoreMocks([session]);
+
+    await dispatchRuntimeActionsStep({
+      parentContinuationToken: "turn-inbox",
+      parentWritable: createTestWritable(),
+      serializedContext: createSerializedContext({
+        ...threadContextAdapter,
+        state: { sandboxSessionId: "root-session" },
+      }),
+      sessionState: createStubSessionState({
+        continuationToken: "child-token",
+        sessionId: "child-session",
+      }),
+    });
+
+    const prepared = vi.mocked(startCoordinatedSubagent).mock.calls[0]?.[0].prepared;
+    expect(prepared?.input.serializedContext["eve.channel"]).toMatchObject({
+      state: {
+        parentSessionId: "child-session",
+        sandboxSessionId: "root-session",
+      },
+    });
   });
 
   it("returns a failed subagent result when remote session creation fails", async () => {

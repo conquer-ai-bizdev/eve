@@ -83,4 +83,26 @@ describe("sandboxProvider", () => {
       }),
     );
   });
+
+  it("opens the parent sandbox session for a first-turn agent copy", async () => {
+    const ctx = new ContextContainer();
+    const registry: RuntimeSandboxRegistry = createStubSandboxRegistry();
+
+    ctx.set(BundleKey, createBundle({ agentName: "weather-agent", registry }));
+    ctx.set(ChannelKey, {
+      kind: "subagent",
+      state: { sandboxSessionId: "parent-session" },
+    });
+    ctx.set(SessionIdKey, "child-session");
+
+    await sandboxProvider.create(ctx, createHarnessSession());
+
+    expect(ensureSandboxAccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "parent-session",
+        state: null,
+        tags: expect.objectContaining({ sessionId: "child-session" }),
+      }),
+    );
+  });
 });

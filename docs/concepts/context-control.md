@@ -64,7 +64,7 @@ See [Sandbox](../sandbox) for the workspace and sandbox model.
 
 ## Delegate to a specialist with a subagent
 
-If a task deserves its own prompt and tool surface, use a local subagent instead of overloading the root agent. Subagents are a context-control lever too. They get their own `instructions.md`, tools, and sandbox, and they run inside their own delegated context instead of extending the root agent inline.
+If a task deserves its own prompt and tool surface, use a declared local subagent instead of overloading the root agent. Declared subagents are a context-control lever too. They get their own `instructions.md`, tools, and sandbox, and they run inside their own delegated context instead of extending the root agent inline. Built-in `agent` copies instead inherit the caller's instructions, tools, and sandbox while starting with fresh history and state.
 
 See [Subagents](../subagents).
 
