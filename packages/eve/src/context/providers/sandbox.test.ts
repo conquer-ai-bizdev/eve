@@ -84,7 +84,7 @@ describe("sandboxProvider", () => {
     );
   });
 
-  it("keeps a shared sandbox tagged with its parent sandbox session id", async () => {
+  it("opens the parent sandbox session for a first-turn agent copy", async () => {
     const ctx = new ContextContainer();
     const registry: RuntimeSandboxRegistry = createStubSandboxRegistry();
 
@@ -100,6 +100,7 @@ describe("sandboxProvider", () => {
     expect(ensureSandboxAccess).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: "wrun_parent",
+        state: null,
         tags: {
           agent: "report-agent",
           channel: "subagent",

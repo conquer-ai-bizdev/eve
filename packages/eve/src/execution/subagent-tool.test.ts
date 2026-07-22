@@ -329,6 +329,45 @@ describe("buildSubagentRunInput", () => {
     });
   });
 
+  it("shares the parent sandbox session on first-turn self-delegation", () => {
+    const action: RuntimeSubagentCallActionRequest = {
+      ...makeAction(),
+      subagentName: "agent",
+    };
+    const { runInput } = buildRuntimeSubagentRunInput({
+      action,
+      auth: null,
+      batchEvent: { sequence: 0, turnId: "turn-0" },
+      initiatorAuth: null,
+      session: makeSession(),
+    });
+
+    expect(runInput.adapter.state).toMatchObject({
+      sandboxSessionId: "parent-session",
+    });
+    expect(runInput.adapter.state).not.toHaveProperty("parentSandboxState");
+  });
+
+  it("keeps the original sandbox session through nested agent copies", () => {
+    const action: RuntimeSubagentCallActionRequest = {
+      ...makeAction(),
+      subagentName: "agent",
+    };
+    const { runInput } = buildRuntimeSubagentRunInput({
+      action,
+      auth: null,
+      batchEvent: { sequence: 0, turnId: "turn-0" },
+      inheritedSandboxSessionId: "root-session",
+      initiatorAuth: null,
+      session: { ...makeSession(), sessionId: "child-session" },
+    });
+
+    expect(runInput.adapter.state).toMatchObject({
+      parentSessionId: "child-session",
+      sandboxSessionId: "root-session",
+    });
+  });
+
   it("does not include sandbox sharing fields for normal subagents", () => {
     const sandboxState = { initialized: true, session: null };
     const session = { ...makeSession(), sandboxState };

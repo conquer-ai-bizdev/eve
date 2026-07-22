@@ -107,7 +107,7 @@ Behavior:
 - It takes no arguments. Each agent has exactly one sandbox.
 - It is async because eve binds or restores sandbox state lazily.
 - It only works when sandbox access is attached to the active runtime path.
-- Visibility is node-local. A subagent sees its own sandbox, not the parent's.
+- Built-in `agent` copies share the caller's sandbox. Declared subagents use their own sandbox.
 
 `SandboxSession` also exposes `resolvePath(path)`, which returns the live backend-native path for a logical `/workspace/...` location. Use it when authored code needs that path before passing it to shell code or a child process.
 

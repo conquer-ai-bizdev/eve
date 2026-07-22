@@ -153,6 +153,10 @@ export async function dispatchRuntimeActionsStep(input: {
             capabilities,
             channelMetadata,
             fanoutSize,
+            inheritedSandboxSessionId:
+              typeof adapter.state?.sandboxSessionId === "string"
+                ? adapter.state.sandboxSessionId
+                : undefined,
             initiatorAuth,
             parentContinuationToken: input.parentContinuationToken,
             session,
