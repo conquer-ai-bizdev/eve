@@ -211,11 +211,12 @@ describe("operator sandbox API", () => {
     });
     expect(execute).toHaveBeenCalledWith(
       { command: "printf CONTROL_OK" },
-      {
+      expect.objectContaining({
         abortSignal: expect.objectContaining({ aborted: false }),
-        messages: [],
-        toolCallId: "operator:operator-1",
-      },
+        callId: "operator:operator-1",
+        getSandbox: expect.any(Function),
+        session: expect.objectContaining({ id: "operator-1" }),
+      }),
     );
     expect(mocks.ensureSandboxAccess).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -228,6 +229,49 @@ describe("operator sandbox API", () => {
         },
       }),
     );
+  });
+
+  it("passes authored Bash tools the complete runtime context", async () => {
+    const sandbox = { id: "sandbox-1" };
+    mocks.ensureSandboxAccess.mockResolvedValue({
+      captureState: vi.fn(),
+      get: vi.fn(async () => sandbox),
+    });
+    const execute = vi.fn(async (_input, ctx) => {
+      const runtime = ctx as {
+        readonly agent: { readonly name: string; readonly nodeId: string };
+        getSandbox(): Promise<{ readonly id: string }>;
+        readonly session: { readonly id: string; readonly turn: { readonly id: string } };
+      };
+      expect(runtime.agent).toMatchObject({
+        name: "worker",
+        nodeId: "subagents/worker",
+      });
+      expect(runtime.session).toMatchObject({
+        id: "operator-1",
+        turn: { id: "operator:operator-1" },
+      });
+      await expect(runtime.getSandbox()).resolves.toMatchObject({ id: "sandbox-1" });
+      return { exitCode: 0, stderr: "", stdout: "CONTEXT_OK" };
+    });
+    mocks.getCompiledRuntimeAgentBundle.mockImplementation(async (options) => {
+      const graph = graphFixture(execute);
+      return options.nodeId === "subagents/worker"
+        ? { graph: { ...graph, root: graph.nodesByNodeId.get("subagents/worker") } }
+        : { graph };
+    });
+
+    await expect(
+      runOperatorSandboxCommand({
+        appRoot: "/app",
+        command: "printf CONTEXT_OK",
+        sessionId: "operator-1",
+        target: "worker",
+      }),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "CONTEXT_OK",
+    });
   });
 
   it("rejects a node without a sandbox", async () => {
@@ -304,7 +348,7 @@ function nodeFixture(
   execute: (input: unknown, options: unknown) => Promise<unknown>,
 ) {
   return {
-    agent: { config: { name } },
+    agent: { behaviorRevision: "0".repeat(64), config: { name } },
     nodeId,
     sandboxRegistry: { sandbox: {} },
     toolRegistry: { toolsByName: new Map([["bash", { definition: { execute } }]]) },

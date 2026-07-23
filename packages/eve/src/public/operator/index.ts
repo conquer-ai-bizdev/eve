@@ -1,9 +1,11 @@
 import { getRun, getWorld } from "#internal/workflow/runtime.js";
 import { createAuthoredSourceRuntimeCompiledArtifactsSource } from "#internal/application/runtime-compiled-artifacts-source.js";
+import { buildBaseToolContext } from "#context/build-base-tool-context.js";
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { SandboxKey, SessionIdKey, SessionKey } from "#context/keys.js";
 import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
+import { setAgentIdentityContext } from "#runtime/agent-identity-context.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
 import { releaseSessionTree } from "#execution/release-participants.js";
@@ -215,7 +217,7 @@ export async function listOperatorSandboxTargets(
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
-/** Runs one command through the target node's resolved Bash tool. */
+/** Runs one command through the target node's resolved Bash tool with authored runtime context. */
 export async function runOperatorSandboxCommand(
   options: OperatorSandboxCommandOptions,
 ): Promise<OperatorSandboxCommandResult> {
@@ -247,14 +249,15 @@ export async function runOperatorSandboxCommand(
     auth: { current: null, initiator: null },
     parent: undefined,
     sessionId: options.sessionId,
-    turn: undefined,
-  } as never);
+    turn: { id: `operator:${options.sessionId}`, modelStepIndex: 0, sequence: 0 },
+  });
   const bundleOptions = {
     compiledArtifactsSource,
   };
   if (node.nodeId !== "__root__") Object.assign(bundleOptions, { nodeId: node.nodeId });
   const nodeBundle = await getCompiledRuntimeAgentBundle(bundleOptions);
   context.set(BundleKey, nodeBundle);
+  setAgentIdentityContext(context, nodeBundle);
 
   const sandboxAccess = await ensureSandboxAccess({
     compiledArtifactsSource,
@@ -279,9 +282,17 @@ export async function runOperatorSandboxCommand(
   const result = await withAbortTimeout(
     async (abortSignal) =>
       await contextStorage.run(context, async () => {
+        const input = { command };
+        const toolCallId = `operator:${options.sessionId}`;
         return await execute(
-          { command },
-          { abortSignal, messages: [], toolCallId: `operator:${options.sessionId}` },
+          input,
+          buildBaseToolContext(
+            { abortSignal, toolCallId },
+            {
+              input,
+              name: "bash",
+            },
+          ) as never,
         );
       }),
     options.timeoutMs ?? 120_000,
