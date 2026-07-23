@@ -402,13 +402,15 @@ async function ensureSession(input: EnsureSessionInput): Promise<VercelSandboxSe
     createParams.tags = input.tags;
   }
 
-  return {
-    created: true,
-    sandbox: await input.createSandbox({
-      createOptions: createParams,
-      sandboxModule: input.sandboxModule,
-    }),
-  };
+  const created = await input.createSandbox({
+    createOptions: createParams,
+    sandboxModule: input.sandboxModule,
+  });
+  // Vercel's snapshot-backed create path can return a fork without the
+  // requested tags. Re-apply them to the returned sandbox so cleanup can
+  // resolve the session owner from provider inventory.
+  await ensureVercelSandboxTags(created, input.tags);
+  return { created: true, sandbox: created };
 }
 
 function createSessionCreateParams(

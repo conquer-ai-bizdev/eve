@@ -1312,6 +1312,52 @@ describe("createVercelSandbox", () => {
     });
   });
 
+  it("re-applies session tags when snapshot-backed creation returns an untagged fork", async () => {
+    const templateSandbox = createMockSandbox({ name: "template" });
+    const sessionSandbox = createMockSandbox({ name: "template-generated-fork" });
+    const sandboxModule = {
+      Sandbox: {
+        create: vi
+          .fn()
+          .mockResolvedValueOnce(templateSandbox)
+          .mockResolvedValueOnce(sessionSandbox),
+        get: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const backend = createTestVercelSandbox({
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    await backend.prewarm({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      seedFiles: [],
+      templateKey: "template-key",
+    });
+    await backend.create({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "session-key",
+      tags: {
+        agent: "weather-agent",
+        channel: "operator",
+        sessionId: "session_123",
+      },
+      templateKey: "template-key",
+    });
+
+    expect(sessionSandbox.update).toHaveBeenCalledWith({
+      tags: {
+        agent: "weather-agent",
+        channel: "operator",
+        sessionId: "session_123",
+      },
+    });
+    expect(sessionSandbox.tags).toEqual({
+      agent: "weather-agent",
+      channel: "operator",
+      sessionId: "session_123",
+    });
+  });
+
   it("forwards networkPolicy shapes through useSessionFn to sandbox.update", async () => {
     const templateSandbox = createMockSandbox({ name: "template" });
     const sessionSandbox = createMockSandbox({ name: "session" });
