@@ -1,10 +1,12 @@
 import { ContextContainer, contextStorage } from "#context/container.js";
 import { SandboxKey, SessionIdKey, SessionKey } from "#context/keys.js";
 import { ensureSandboxAccess } from "#execution/sandbox/ensure.js";
+import { createToolExecuteWithAuth } from "#execution/tool-auth.js";
 import { createAuthoredSourceRuntimeCompiledArtifactsSource } from "#internal/application/runtime-compiled-artifacts-source.js";
 import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-artifacts-source.js";
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
+import type { ToolContext } from "#tools/definition.js";
 
 export interface OperatorSandboxCommandOptions {
   readonly appRoot?: string;
@@ -77,8 +79,12 @@ export async function runOperatorSandboxCommand(
   });
   context.set(SandboxKey, sandboxAccess);
 
-  const execute = node.toolRegistry.toolsByName.get("bash")?.definition.execute;
-  if (!execute) throw new Error(`Node "${node.nodeId}" has no resolved bash tool.`);
+  const authoredExecute = node.toolRegistry.toolsByName.get("bash")?.definition.execute;
+  if (!authoredExecute) throw new Error(`Node "${node.nodeId}" has no resolved bash tool.`);
+  const execute = createToolExecuteWithAuth({
+    execute: authoredExecute as unknown as (input: unknown, context: ToolContext) => unknown,
+    scope: "bash",
+  });
   const result = await withTimeout(
     async (abortSignal) =>
       await contextStorage.run(

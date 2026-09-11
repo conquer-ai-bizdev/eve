@@ -18,7 +18,11 @@ describe("operator sandbox command", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("opens the target through the normal session sandbox lifecycle", async () => {
-    const execute = vi.fn(async () => ({ exitCode: 0, stderr: "", stdout: "CONTROL_OK" }));
+    const sandbox = { id: "sandbox_1" };
+    const execute = vi.fn(async (_input, context: ToolExecutionContext) => {
+      expect(await context.getSandbox()).toEqual(expect.objectContaining(sandbox));
+      return { exitCode: 0, stderr: "", stdout: "CONTROL_OK" };
+    });
     const root = node("__root__", "root", execute);
     const worker = node("subagents/worker", "worker", execute);
     const graph = {
@@ -29,7 +33,7 @@ describe("operator sandbox command", () => {
       ]),
     };
     mocks.getCompiledRuntimeAgentBundle.mockResolvedValue({ graph });
-    mocks.ensureSandboxAccess.mockResolvedValue({ get: vi.fn() });
+    mocks.ensureSandboxAccess.mockResolvedValue({ get: vi.fn().mockResolvedValue(sandbox) });
 
     await expect(
       runOperatorSandboxCommand({
@@ -56,11 +60,12 @@ describe("operator sandbox command", () => {
     );
     expect(execute).toHaveBeenCalledWith(
       { command: "printf CONTROL_OK" },
-      {
+      expect.objectContaining({
         abortSignal: expect.objectContaining({ aborted: false }),
-        messages: [],
-        toolCallId: "operator:wrun_1",
-      },
+        callId: "operator:wrun_1",
+        toolName: "bash",
+      }),
+      undefined,
     );
   });
 
@@ -93,7 +98,7 @@ describe("operator sandbox command", () => {
 function node(
   nodeId: string,
   name: string,
-  execute: (input: unknown, context: { abortSignal: AbortSignal }) => Promise<unknown>,
+  execute: (input: unknown, context: ToolExecutionContext) => Promise<unknown>,
 ) {
   return {
     agent: { config: { name } },
@@ -102,3 +107,8 @@ function node(
     toolRegistry: { toolsByName: new Map([["bash", { definition: { execute } }]]) },
   };
 }
+
+type ToolExecutionContext = {
+  readonly abortSignal: AbortSignal;
+  getSandbox(): Promise<unknown>;
+};
