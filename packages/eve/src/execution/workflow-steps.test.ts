@@ -2313,6 +2313,49 @@ describe("turnStep", () => {
       hasPendingInputBatch: true,
       settled: { output: "settled while approval remains open" },
     });
+    expect(result.serializedContext).not.toHaveProperty("eve.releaseReason");
+  });
+
+  it("does not mark a settled turn for release while authorization remains pending", async () => {
+    const session = {
+      ...createStubSession(),
+      state: setPendingAuthorization(createStubSession().state, {
+        challenges: [
+          {
+            attemptId: "attempt-statuspage",
+            challenge: {
+              instructions: "Sign in to continue",
+              url: "https://idp.example/authorize",
+            },
+            hookUrl: "https://app.example/callback",
+            name: "statuspage",
+            principal: { type: "app" },
+          },
+        ],
+      }),
+    };
+    installSessionStoreMocks([session]);
+    vi.mocked(createExecutionNodeStep).mockImplementation(() => {
+      return async (stepSession): Promise<StepResult> => ({
+        next: null,
+        session: stepSession,
+        settledTurn: { output: "settled while authorization remains open" },
+      });
+    });
+
+    const result = await turnStep({
+      input: { kind: "deliver", payloads: [{ message: "unrelated message" }] },
+      parentWritable: createTestWritable(),
+      serializedContext: createSerializedContext(),
+      sessionState: createStubSessionState(),
+    });
+
+    expect(result).toMatchObject({
+      action: "park",
+      hasPendingAuthorization: true,
+      settled: { output: "settled while authorization remains open" },
+    });
+    expect(result.serializedContext).not.toHaveProperty("eve.releaseReason");
   });
 
   it.each([

@@ -54,6 +54,8 @@ import type { HandleEventFn, HarnessSession, StepInput, StepResult } from "#harn
 import { getTurnUsageState, takeSessionUsageDelta, toUsage } from "#harness/turn-tag-state.js";
 import type { DurableStepResult } from "#execution/next-driver-action.js";
 import { derivePendingState } from "#execution/pending-turn-state.js";
+import { stampReleaseIntent } from "#runtime/hooks/registry.js";
+import { getSessionTaskIndex } from "#tasks/session-index.js";
 import {
   createAuthorizationCompletedEvent,
   createSessionStartedEvent,
@@ -620,7 +622,10 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
       ...backgroundTransition,
       output: stepResult.next.output,
       isError: stepResult.next.isError,
-      serializedContext: nextSerializedContext,
+      serializedContext: stampReleaseIntent(
+        nextSerializedContext,
+        stepResult.next.isError === true ? "failed" : "completed",
+      ),
       sessionState: nextState,
       usage: sessionTotals === undefined ? undefined : toUsage(sessionTotals),
       usageDelta: takeSessionUsageDelta(stepResult.session).delta,
@@ -643,17 +648,24 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
 
     const pending = derivePendingState(stepResult.session);
 
-    // `settledTurn` is the harness's explicit settlement verdict. Pending
-    // state may predate this turn, while newly created parks omit the verdict.
-    // `usage` carries only this turn's delta: the take marks the totals
-    // reported, so a persistent child never re-reports earlier spend.
     if (stepResult.settledTurn !== undefined) {
       const { delta, session: reportedSession } = takeSessionUsageDelta(stepResult.session);
       return {
         action: "park",
         ...backgroundTransition,
         ...pending,
-        serializedContext: nextSerializedContext,
+        serializedContext: stampReleaseIntent(
+          nextSerializedContext,
+          getSessionTaskIndex(stepResult.session.state).some(
+            (task) => task.terminalView === undefined,
+          ) ||
+            pending.hasPendingAuthorization ||
+            pending.hasPendingInputBatch
+            ? undefined
+            : stepResult.settledTurn.isError === true
+              ? "failed"
+              : "completed",
+        ),
         sessionState: createDurableSessionState({ session: reportedSession }),
         settled: {
           output: stepResult.settledTurn.output,

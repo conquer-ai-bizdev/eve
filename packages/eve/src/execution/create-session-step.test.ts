@@ -21,6 +21,7 @@ const TestTurnAgent: RuntimeTurnAgent = {
 describe("createSessionStep", () => {
   it("adds task_update guidance to a task-owned session system prompt", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {},
       },
@@ -59,6 +60,7 @@ describe("createSessionStep", () => {
 
   it("does not add task_update guidance to a task-owned node without the tool", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {},
       },
@@ -77,6 +79,7 @@ describe("createSessionStep", () => {
 
   it("defaults root sessions to the root input token budget", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {},
       },
@@ -96,6 +99,7 @@ describe("createSessionStep", () => {
 
   it("limits delegated subagent sessions to the inherited token budget", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {},
       },
@@ -117,6 +121,7 @@ describe("createSessionStep", () => {
 
   it("leaves delegated subagent sessions uncapped with uncapped inherited axes", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {},
       },
@@ -136,6 +141,7 @@ describe("createSessionStep", () => {
 
   it("caps configured child token limits at the inherited token budget", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {
           limits: { maxInputTokensPerSession: 10_000_000 },
@@ -157,6 +163,7 @@ describe("createSessionStep", () => {
 
   it("caps a configured child token-cost limit at the inherited budget", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: { limits: { maxTokenCostUsdPerSession: 2 } },
       },
@@ -176,6 +183,7 @@ describe("createSessionStep", () => {
 
   it("keeps tighter configured child token limits under inherited token budget", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {
           limits: { maxInputTokensPerSession: 1_000_000 },
@@ -197,6 +205,7 @@ describe("createSessionStep", () => {
 
   it("still applies inherited token budget when configured child limit is false", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {
           limits: { maxInputTokensPerSession: false },
@@ -218,6 +227,7 @@ describe("createSessionStep", () => {
 
   it("seeds session token limits from resolved agent config", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {
           limits: {
@@ -245,6 +255,7 @@ describe("createSessionStep", () => {
 
   it("seeds workflow max subagents from the authored Workflow tool", async () => {
     vi.mocked(getCompiledRuntimeAgentBundle).mockResolvedValue({
+      hookRegistry: { releases: [] },
       resolvedAgent: {
         config: {},
         workflowTool: { maxSubagents: 5 },

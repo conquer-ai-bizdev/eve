@@ -30,6 +30,7 @@ import type { SessionInboxPayload } from "#execution/session-command-inbox.js";
 import { sessionCommandHookToken } from "#execution/session-command-token.js";
 import { SESSION_INBOX_WIRE_VERSION } from "#execution/wire/session-inbox-contract.js";
 import { settleContinuationConflictStep } from "#execution/continuation-conflict-step.js";
+import { releaseSessionResourcesStep } from "#execution/release-session-resources-step.js";
 
 vi.mock("#compiled/@workflow/core/index.js", () => ({
   createHook: vi.fn(),
@@ -119,6 +120,10 @@ vi.mock("./continuation-conflict-step.js", () => ({
   settleContinuationConflictStep: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("./release-session-resources-step.js", () => ({
+  releaseSessionResourcesStep: vi.fn(async ({ sessionState }) => sessionState),
+}));
+
 function createSessionStateForMock(
   overrides: Partial<DurableSessionState> = {},
 ): DurableSessionState {
@@ -134,6 +139,7 @@ function createSessionStateForMock(
 
 function createSessionStepResultForMock(state: DurableSessionState) {
   return {
+    hasReleaseHooks: false,
     identity: { agentId: "test-agent", nodeId: "$root" },
     state,
   };
@@ -289,6 +295,40 @@ describe("workflowEntry", () => {
     expect(resolveInitialTurnCallerStep).not.toHaveBeenCalled();
     expect(bindTurnCallerContextStep).not.toHaveBeenCalled();
     expect(notifyTurnCallerStep).not.toHaveBeenCalled();
+  });
+
+  it("starts the next turn from release-committed session state", async () => {
+    const sessionState = createBaseSessionState();
+    const releasedState = createBaseSessionState({ continuationToken: "http:released" });
+    vi.mocked(createSessionStep).mockResolvedValue({
+      ...createSessionStepResultForMock(sessionState),
+      hasReleaseHooks: true,
+    });
+    vi.mocked(releaseSessionResourcesStep).mockResolvedValueOnce(releasedState);
+    installHookMocks({
+      deliveryHooks: [
+        {
+          token: "http:test",
+          values: [{ kind: "send", payload: { message: "follow up" } }],
+        },
+      ],
+      turnControls: [
+        turnResult({
+          action: "park",
+          serializedContext: { "eve.releaseReason": "completed" },
+          sessionState,
+          settled: { output: "first" },
+        }),
+        turnResult({ action: "done", output: "second", sessionState: releasedState }),
+      ],
+    });
+
+    await workflowEntry({
+      input: { message: "first" },
+      serializedContext: createSerializedContext(),
+    });
+
+    expect(vi.mocked(dispatchTurnStep).mock.calls[1]?.[0].sessionState).toBe(releasedState);
   });
 
   it("retains caller steps and task start notification for a callback task turn", async () => {

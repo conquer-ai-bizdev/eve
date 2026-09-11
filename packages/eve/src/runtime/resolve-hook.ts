@@ -2,7 +2,7 @@ import type { CompiledHookDefinition } from "../compiler/manifest.js";
 import type { CompiledModuleMap } from "../compiler/module-map.js";
 import { expectFunction, expectObjectRecord } from "../internal/authored-module.js";
 import type { MessageStreamEvent } from "../protocol/message.js";
-import type { StreamEventHook } from "../public/definitions/hook.js";
+import type { ReleaseHook, StreamEventHook } from "../public/definitions/hook.js";
 import { toErrorMessage } from "../shared/errors.js";
 import { loadResolvedModuleExport, ResolveAgentError } from "./resolve-helpers.js";
 import type { ResolvedHookDefinition } from "./types.js";
@@ -51,8 +51,24 @@ export async function resolveHookDefinition(
       }
     }
 
+    let release: ReleaseHook | undefined;
+    const lifecycleRaw = resolvedRecord.lifecycle;
+    if (lifecycleRaw !== undefined) {
+      const lifecycle = expectObjectRecord(
+        lifecycleRaw,
+        describe(definition, "to expose `lifecycle` as an object"),
+      );
+      if (lifecycle.release !== undefined) {
+        release = expectFunction(
+          lifecycle.release,
+          describe(definition, "to provide a function for `lifecycle.release`"),
+        ) as ReleaseHook;
+      }
+    }
+
     return {
       events,
+      release,
       exportName: definition.exportName,
       logicalPath: definition.logicalPath,
       slug: definition.slug,

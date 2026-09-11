@@ -51,6 +51,8 @@ import { terminateChildSessionsStep } from "#execution/terminate-child-sessions-
 import type { DynamicSubagentAgentConfig } from "#runtime/subagents/dynamic-agent-config.js";
 import { attachClientContext, readClientContext } from "#internal/client-context.js";
 import { settleContinuationConflictStep } from "#execution/continuation-conflict-step.js";
+import { releaseSessionResourcesStep } from "#execution/release-session-resources-step.js";
+import { takeReleaseIntent } from "#runtime/hooks/registry.js";
 import {
   SESSION_INBOX_CONTEXT_KEY,
   SESSION_INBOX_WIRE_VERSION,
@@ -136,6 +138,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
     serializedContext: input.serializedContext,
     terminalEmitted: false,
   };
+  let hasReleaseHooks = false;
 
   try {
     // Derived once and reused for createSession + tag emission so the
@@ -198,6 +201,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
       }
 
       sessionState = sessionCreation.value.state;
+      hasReleaseHooks = sessionCreation.value.hasReleaseHooks === true;
       crashCleanupState.lastSessionState = sessionState;
       crashCleanupState.caller = hasDelegatedCallerContext(input.serializedContext)
         ? await resolveInitialTurnCallerStep({ serializedContext: input.serializedContext })
@@ -208,6 +212,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
         capabilities,
         commandInbox,
         driverWritable,
+        hasReleaseHooks,
         initialInput: {
           deliveryMetadata:
             input.serializedContext["eve.channelDelivery"] === undefined
@@ -256,7 +261,9 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
     return await finalizeExpiredSession({
       caller: crashCleanupState.caller,
       driverWritable,
+      hasReleaseHooks,
       mode,
+      releaseReason: "completed",
       serializedContext: outcome.serializedContext,
       sessionState: outcome.sessionState,
       terminalState: crashCleanupState,
@@ -281,6 +288,13 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
         turnId: crashCleanupState.turnId,
       });
       crashCleanupState.terminalEmitted = true;
+    }
+    if (hasReleaseHooks && crashCleanupState.lastSessionState !== undefined) {
+      await releaseSessionResourcesStep({
+        reason: "failed",
+        serializedContext: crashCleanupState.serializedContext,
+        sessionState: crashCleanupState.lastSessionState,
+      });
     }
     if (terminalAlreadyEmitted) throw createSafeOuterWorkflowError();
     if (mode === "task") {
@@ -308,6 +322,7 @@ async function runDriverLoop(input: {
   readonly capabilities?: SessionCapabilities;
   readonly commandInbox: SessionCommandInbox;
   readonly driverWritable: WritableStream<Uint8Array>;
+  readonly hasReleaseHooks: boolean;
   readonly initialInput: HookPayload;
   readonly crashCleanupState: CrashCleanupState;
   readonly mode: RunMode;
@@ -463,12 +478,14 @@ async function runDriverLoop(input: {
     let action: TurnDriverAction = await runTurn(input.initialInput);
 
     while (true) {
+      let notifyCancelledCaller: (() => Promise<void>) | undefined;
       if (action.kind === "done") {
         return {
           kind: "result",
           result: await finalizeDone({
             action,
             caller: input.crashCleanupState.caller,
+            hasReleaseHooks: input.hasReleaseHooks,
             mode: input.mode,
             terminalState: input.crashCleanupState,
           }),
@@ -494,11 +511,12 @@ async function runDriverLoop(input: {
           caller: input.crashCleanupState.caller,
           sessionId: stateCursor.sessionState.sessionId,
         };
-        await notifyCancelledTaskCallerStep(
-          settled.usage === undefined
-            ? cancelledCaller
-            : { ...cancelledCaller, usage: settled.usage },
-        );
+        notifyCancelledCaller = async () =>
+          await notifyCancelledTaskCallerStep(
+            settled.usage === undefined
+              ? cancelledCaller
+              : { ...cancelledCaller, usage: settled.usage },
+          );
         input.crashCleanupState.lastSessionState = stateCursor.sessionState;
       }
 
@@ -511,6 +529,19 @@ async function runDriverLoop(input: {
       // `settled` rides the typed park arm exclusively; `run-step` preserves
       // the full StepResult so no state-key fallback exists anymore.
       const settled = action.settled;
+      const releaseReason = takeReleaseIntent(stateCursor.serializedContext);
+      if (input.hasReleaseHooks && releaseReason !== undefined) {
+        stateCursor.adoptState({
+          sessionState: await releaseSessionResourcesStep({
+            reason: releaseReason,
+            requireSettledCohort: action.cancelled === true,
+            serializedContext: stateCursor.serializedContext,
+            sessionState: stateCursor.sessionState,
+          }),
+        });
+        input.crashCleanupState.lastSessionState = stateCursor.sessionState;
+      }
+      await notifyCancelledCaller?.();
       if (action.cancelled !== true && settled !== undefined) {
         if (input.crashCleanupState.caller !== undefined) {
           await notifyTurnCallerStep({
@@ -558,7 +589,9 @@ async function runDriverLoop(input: {
           result: await finalizeExpiredSession({
             caller: input.crashCleanupState.caller,
             driverWritable: input.driverWritable,
+            hasReleaseHooks: input.hasReleaseHooks,
             mode: input.mode,
+            releaseReason: "cancelled",
             serializedContext: stateCursor.serializedContext,
             sessionState: stateCursor.sessionState,
             terminalState: input.crashCleanupState,
@@ -577,7 +610,9 @@ async function runDriverLoop(input: {
           result: await finalizeExpiredSession({
             caller: input.crashCleanupState.caller,
             driverWritable: input.driverWritable,
+            hasReleaseHooks: input.hasReleaseHooks,
             mode: input.mode,
+            releaseReason: "completed",
             serializedContext: stateCursor.serializedContext,
             sessionState: stateCursor.sessionState,
             terminalState: input.crashCleanupState,

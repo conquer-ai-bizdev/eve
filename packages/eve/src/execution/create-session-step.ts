@@ -22,6 +22,7 @@ import { TASK_UPDATE_SESSION_INSTRUCTION } from "#tools/framework/task-update.js
  * drive the turn loop.
  */
 export interface CreateSessionStepResult {
+  readonly hasReleaseHooks: boolean;
   readonly state: DurableSessionState;
 }
 
@@ -95,5 +96,8 @@ export async function createSessionStep(input: {
     workflowMaxSubagents: bundle.resolvedAgent.workflowTool?.maxSubagents,
   });
 
-  return { state: createDurableSessionState({ session }) };
+  return {
+    hasReleaseHooks: bundle.hookRegistry.releases.length > 0,
+    state: createDurableSessionState({ session }),
+  };
 }

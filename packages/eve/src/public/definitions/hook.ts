@@ -98,6 +98,11 @@ export type StreamEventHooks<TKey extends HookEventKey = HookEventKey> = {
   readonly [TKey_ in TKey]?: StreamEventHook<HookEvent<TKey_>>;
 };
 
+export type ReleaseReason = "completed" | "failed" | "cancelled";
+export type ReleaseSignal = { readonly reason: ReleaseReason };
+export type ReleaseHook = (signal: ReleaseSignal, ctx: HookContext) => void | Promise<void>;
+export type LifecycleHooks = { readonly release?: ReleaseHook };
+
 /**
  * Public hook definition authored in `agent/hooks/*.ts`.
  *
@@ -109,6 +114,7 @@ export type StreamEventHooks<TKey extends HookEventKey = HookEventKey> = {
  */
 export interface HookDefinition<TKey extends HookEventKey = HookEventKey> {
   readonly events?: StreamEventHooks<TKey>;
+  readonly lifecycle?: LifecycleHooks;
 }
 
 type DefinedHookEventKeys<TDefinition extends HookDefinition> = Extract<

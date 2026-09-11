@@ -73,6 +73,18 @@ describe("resolveHookDefinition", () => {
     expect(Object.keys(resolved.events)).toEqual([]);
   });
 
+  it("attaches lifecycle release handlers", async () => {
+    const definition = buildDefinition({ slug: "cleanup" });
+    const release = () => undefined;
+    const moduleMap = buildModuleMap(definition.sourceId, {
+      default: { lifecycle: { release } },
+    });
+
+    await expect(resolveHookDefinition(definition, moduleMap, undefined)).resolves.toMatchObject({
+      release,
+    });
+  });
+
   it("rejects a non-function event handler with a typed error", async () => {
     const definition = buildDefinition({ slug: "broken" });
     const moduleMap = buildModuleMap(definition.sourceId, {
@@ -86,5 +98,16 @@ describe("resolveHookDefinition", () => {
     await expect(resolveHookDefinition(definition, moduleMap, undefined)).rejects.toThrow(
       /events\.session\.started/,
     );
+  });
+
+  it("rejects invalid lifecycle shapes", async () => {
+    const definition = buildDefinition({ slug: "broken" });
+    await expect(
+      resolveHookDefinition(
+        definition,
+        buildModuleMap(definition.sourceId, { default: { lifecycle: { release: 42 } } }),
+        undefined,
+      ),
+    ).rejects.toThrow(/lifecycle\.release/);
   });
 });

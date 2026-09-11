@@ -9,13 +9,17 @@ import type { NextDriverAction } from "#execution/next-driver-action.js";
 import { fireSessionCallbackStep } from "#subagents/callback-step.js";
 import { emitTerminalSessionCompletionStep } from "#execution/terminal-session-completion-step.js";
 import { terminateChildSessionsStep } from "#execution/terminate-child-sessions-step.js";
+import { releaseSessionResourcesStep } from "#execution/release-session-resources-step.js";
+import { takeReleaseIntent } from "#runtime/hooks/registry.js";
 import type { RunMode } from "#shared/run-mode.js";
 import type { TokenUsage } from "#shared/token-usage.js";
 
 export async function finalizeExpiredSession(input: {
   readonly caller: TurnCaller | undefined;
   readonly driverWritable: WritableStream<Uint8Array>;
+  readonly hasReleaseHooks: boolean;
   readonly mode: RunMode;
+  readonly releaseReason: "completed" | "cancelled";
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
   readonly terminalState?: { terminalEmitted: boolean };
@@ -24,6 +28,13 @@ export async function finalizeExpiredSession(input: {
     serializedContext: input.serializedContext,
     sessionState: input.sessionState,
   });
+  if (input.hasReleaseHooks) {
+    await releaseSessionResourcesStep({
+      reason: input.releaseReason,
+      serializedContext: input.serializedContext,
+      sessionState: input.sessionState,
+    });
+  }
   await emitTerminalSessionCompletionStep({
     parentWritable: input.driverWritable,
     serializedContext: input.serializedContext,
@@ -54,6 +65,7 @@ export async function finalizeExpiredSession(input: {
 export async function finalizeDone(input: {
   readonly action: NextDriverAction & { readonly kind: "done" };
   readonly caller: TurnCaller | undefined;
+  readonly hasReleaseHooks: boolean;
   readonly mode: RunMode;
   readonly terminalState?: { terminalEmitted: boolean };
 }): Promise<{ readonly output: unknown }> {
@@ -64,6 +76,14 @@ export async function finalizeDone(input: {
     serializedContext,
     sessionState: input.action.sessionState,
   });
+  const releaseReason = takeReleaseIntent(serializedContext);
+  if (input.hasReleaseHooks && releaseReason !== undefined) {
+    await releaseSessionResourcesStep({
+      reason: releaseReason,
+      serializedContext,
+      sessionState: input.action.sessionState,
+    });
+  }
   if (input.terminalState !== undefined) input.terminalState.terminalEmitted = true;
   if (input.mode === "task") {
     await fireSessionCallbackStep({

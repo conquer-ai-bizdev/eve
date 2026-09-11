@@ -1,6 +1,24 @@
 import type { MessageStreamEvent } from "#protocol/message.js";
-import type { StreamEventHook } from "../../public/definitions/hook.js";
+import type { ReleaseHook, ReleaseReason, StreamEventHook } from "../../public/definitions/hook.js";
 import type { ResolvedHookDefinition } from "../types.js";
+
+const RELEASE_INTENT_CONTEXT_KEY = "eve.releaseReason";
+type SerializedContext = Record<string, unknown>;
+
+export function stampReleaseIntent(
+  context: SerializedContext,
+  reason: ReleaseReason | undefined,
+): SerializedContext {
+  return reason === undefined ? context : { ...context, [RELEASE_INTENT_CONTEXT_KEY]: reason };
+}
+
+export function takeReleaseIntent(context: SerializedContext): ReleaseReason | undefined {
+  const reason = context[RELEASE_INTENT_CONTEXT_KEY];
+  delete context[RELEASE_INTENT_CONTEXT_KEY];
+  return reason === "completed" || reason === "failed" || reason === "cancelled"
+    ? reason
+    : undefined;
+}
 
 /**
  * One ordered stream-event subscriber paired with its source slug.
@@ -21,6 +39,7 @@ interface RuntimeStreamEventHookEntry {
  * without scanning every entry.
  */
 export interface RuntimeHookRegistry {
+  readonly releases: readonly ReleaseHook[];
   readonly streamEventsByType: ReadonlyMap<string, readonly RuntimeStreamEventHookEntry[]>;
   readonly streamEventsWildcard: readonly RuntimeStreamEventHookEntry[];
 }
@@ -33,6 +52,7 @@ export interface RuntimeHookRegistry {
  */
 export function createEmptyHookRegistry(): RuntimeHookRegistry {
   return {
+    releases: [],
     streamEventsByType: new Map(),
     streamEventsWildcard: [],
   };
@@ -51,8 +71,10 @@ export function createRuntimeHookRegistry(
 ): RuntimeHookRegistry {
   const streamEventsByType = new Map<string, RuntimeStreamEventHookEntry[]>();
   const streamEventsWildcard: RuntimeStreamEventHookEntry[] = [];
+  const releases: ReleaseHook[] = [];
 
   for (const hook of resolvedHooks) {
+    if (hook.release !== undefined) releases.push(hook.release);
     for (const [eventType, handler] of Object.entries(hook.events)) {
       const entry: RuntimeStreamEventHookEntry = { slug: hook.slug, handler, eventType };
       if (eventType === "*") {
@@ -66,6 +88,7 @@ export function createRuntimeHookRegistry(
   }
 
   return {
+    releases,
     streamEventsByType,
     streamEventsWildcard,
   };

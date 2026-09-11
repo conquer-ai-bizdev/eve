@@ -1210,6 +1210,64 @@ describe("workflowEntry integration", () => {
     });
   });
 
+  it("releases once per settled conversation turn and keeps the session reusable", async () => {
+    const releases: Array<{ readonly reason: string; readonly sessionId: string }> = [];
+    const continuationToken = "http:workflow-entry-release";
+    const runtime = await createTestRuntime({
+      agent: { name: "workflow-entry-release" },
+      modules: [
+        {
+          logicalPath: "hooks/release.ts",
+          loadNamespace: async () => ({
+            default: defineHook({
+              lifecycle: {
+                release(signal, ctx) {
+                  releases.push({ reason: signal.reason, sessionId: ctx.session.id });
+                },
+              },
+            }),
+          }),
+        },
+      ],
+    });
+
+    await runtime.run(async () => {
+      const run = await start(workflowEntry, [
+        {
+          input: { message: "first release" },
+          serializedContext: buildSerializedContext({
+            channelKind: "http",
+            continuationToken,
+            mode: "conversation",
+          }),
+        },
+      ]);
+      const stream = captureEvents(run);
+      try {
+        await stream.nextUntil("first settlement", (event) => event.type === "session.waiting");
+        await vi.waitFor(() =>
+          expect(releases).toEqual([{ reason: "completed", sessionId: run.runId }]),
+        );
+
+        await waitForHook({ runId: run.runId }, { token: continuationToken });
+        await resumeHook(continuationToken, {
+          kind: "send",
+          payload: { message: "second release" },
+        });
+        await stream.nextUntil("second settlement", (event) => event.type === "session.waiting");
+        await vi.waitFor(() =>
+          expect(releases).toEqual([
+            { reason: "completed", sessionId: run.runId },
+            { reason: "completed", sessionId: run.runId },
+          ]),
+        );
+      } finally {
+        stream.dispose();
+        await run.cancel();
+      }
+    });
+  });
+
   it("returns agent-declared structured output in task mode", async () => {
     const outputSchema = {
       properties: {
