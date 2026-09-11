@@ -138,7 +138,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
     serializedContext: input.serializedContext,
     terminalEmitted: false,
   };
-  let hasReleaseHooks = false;
+  let releaseDue = false;
 
   try {
     // Derived once and reused for createSession + tag emission so the
@@ -201,7 +201,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
       }
 
       sessionState = sessionCreation.value.state;
-      hasReleaseHooks = sessionCreation.value.hasReleaseHooks === true;
+      releaseDue = sessionCreation.value.hasReleaseHooks === true;
       crashCleanupState.lastSessionState = sessionState;
       crashCleanupState.caller = hasDelegatedCallerContext(input.serializedContext)
         ? await resolveInitialTurnCallerStep({ serializedContext: input.serializedContext })
@@ -212,7 +212,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
         capabilities,
         commandInbox,
         driverWritable,
-        hasReleaseHooks,
+        hasReleaseHooks: releaseDue,
         initialInput: {
           deliveryMetadata:
             input.serializedContext["eve.channelDelivery"] === undefined
@@ -241,6 +241,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
         crashCleanupState,
         mode,
         retention: input.retention,
+        setReleaseDue: (due) => (releaseDue = due),
         serializedContext: input.serializedContext,
         sessionState,
         sessionTimeoutDeadline:
@@ -261,7 +262,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
     return await finalizeExpiredSession({
       caller: crashCleanupState.caller,
       driverWritable,
-      hasReleaseHooks,
+      hasReleaseHooks: releaseDue,
       mode,
       releaseReason: "completed",
       serializedContext: outcome.serializedContext,
@@ -270,6 +271,7 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
     });
   } catch (error) {
     const terminalAlreadyEmitted = crashCleanupState.terminalEmitted;
+    if (terminalAlreadyEmitted) throw createSafeOuterWorkflowError();
     // Safety net for failures the tool-loop harness does not already
     // surface as `session.failed` (deserialization, runtime-action
     // throws, adapter `deliver` throws, staging errors, etc.) so the
@@ -289,14 +291,13 @@ export async function workflowEntry(input: WorkflowEntryInput): Promise<Workflow
       });
       crashCleanupState.terminalEmitted = true;
     }
-    if (hasReleaseHooks && crashCleanupState.lastSessionState !== undefined) {
+    if (releaseDue && crashCleanupState.lastSessionState !== undefined) {
       await releaseSessionResourcesStep({
         reason: "failed",
         serializedContext: crashCleanupState.serializedContext,
         sessionState: crashCleanupState.lastSessionState,
       });
     }
-    if (terminalAlreadyEmitted) throw createSafeOuterWorkflowError();
     if (mode === "task") {
       await fireSessionCallbackStep({
         error: normalizeSerializableError(error),
@@ -327,6 +328,7 @@ async function runDriverLoop(input: {
   readonly crashCleanupState: CrashCleanupState;
   readonly mode: RunMode;
   readonly retention?: AgentWorkflowRetentionDefinition;
+  readonly setReleaseDue: (due: boolean) => void;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
   readonly sessionTimeoutDeadline?: Date;
@@ -427,6 +429,7 @@ async function runDriverLoop(input: {
   // Control-hook disposal is deferred one turn — see DispatchedTurn.
   let disposeSettledTurnControl: (() => Promise<void>) | undefined;
   const runTurn = async (delivery: HookPayload): Promise<TurnDriverAction> => {
+    input.setReleaseDue(input.hasReleaseHooks);
     const dispatchedSessionState = stateCursor.sessionState;
     const caller = input.crashCleanupState.caller;
     if (caller?.taskId !== undefined) {
@@ -532,14 +535,14 @@ async function runDriverLoop(input: {
       let releaseReason = takeReleaseIntent(stateCursor.serializedContext);
       if (action.cancelled) releaseReason = "cancelled";
       if (input.hasReleaseHooks && releaseReason !== undefined) {
-        stateCursor.adoptState({
-          sessionState: await releaseSessionResourcesStep({
-            reason: releaseReason,
-            requireSettledCohort: action.cancelled === true,
-            serializedContext: stateCursor.serializedContext,
-            sessionState: stateCursor.sessionState,
-          }),
+        const releasedState = await releaseSessionResourcesStep({
+          reason: releaseReason,
+          requireSettledCohort: action.cancelled === true,
+          serializedContext: stateCursor.serializedContext,
+          sessionState: stateCursor.sessionState,
         });
+        if (releasedState !== undefined) stateCursor.adoptState({ sessionState: releasedState });
+        input.setReleaseDue(releasedState === undefined);
         input.crashCleanupState.lastSessionState = stateCursor.sessionState;
       }
       await notifyCancelledCaller?.();

@@ -42,7 +42,7 @@ describe("releaseSessionResourcesStep", () => {
     });
     const second = vi.fn(async () => calls.push("second"));
     vi.mocked(deserializeContext).mockResolvedValue({
-      get: () => ({ kind: "mock" }),
+      get: (key: unknown) => (key === "channel" ? { kind: "mock" } : "channel:thread"),
       require: () => ({
         hookRegistry: { releases: [first, second] },
         nodeId: "child",
@@ -63,7 +63,10 @@ describe("releaseSessionResourcesStep", () => {
     expect(calls).toEqual(["first", "second"]);
     expect(second).toHaveBeenCalledWith(
       { reason: "failed" },
-      expect.objectContaining({ agent: { name: "agent", nodeId: "child" } }),
+      expect.objectContaining({
+        agent: { name: "agent", nodeId: "child" },
+        channel: { continuationToken: "channel:thread", kind: "mock" },
+      }),
     );
     expect(logError).toHaveBeenCalledTimes(1);
     expect(withContextScope).toHaveBeenCalledTimes(1);
@@ -149,7 +152,7 @@ describe("releaseSessionResourcesStep", () => {
       sessionState,
     });
 
-    expect(result).toBe(sessionState);
+    expect(result).toBeUndefined();
     expect(release).not.toHaveBeenCalled();
     expect(withContextScope).not.toHaveBeenCalled();
   });

@@ -175,6 +175,105 @@ describe("buildSandboxSession", () => {
     },
   );
 
+  it("contains a synchronous kill throw and still awaits process and log settlement", async () => {
+    let finish!: (result: { exitCode: number }) => void;
+    const completed = new Promise<{ exitCode: number }>((resolve) => {
+      finish = resolve;
+    });
+    let closeStdout!: () => void;
+    const stdout = new ReadableStream<Uint8Array>({
+      start(controller) {
+        closeStdout = () => controller.close();
+      },
+    });
+    const kill = vi.fn<() => Promise<void>>(() => {
+      throw new Error("sync kill failed");
+    });
+    const spawn = vi.fn(async (): Promise<SandboxProcess> => ({
+      kill,
+      stderr: textStream(""),
+      stdout,
+      wait: () => completed,
+    }));
+    const session = buildSandboxSession(createTestPrimitives({ spawn }));
+    const controller = new AbortController();
+    let abortListener!: () => void;
+    vi.spyOn(controller.signal, "addEventListener").mockImplementation((_type, listener) => {
+      abortListener = () => {
+        const event = new Event("abort");
+        if (typeof listener === "function") listener(event);
+        else listener.handleEvent(event);
+      };
+    });
+    const running = session.run({ abortSignal: controller.signal, command: "sleep 120" });
+    let settled = false;
+    void running.then(() => {
+      settled = true;
+    });
+    await spawn.mock.results[0]?.value;
+
+    expect(abortListener).not.toThrow();
+    await Promise.resolve();
+    expect(kill).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+
+    closeStdout();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finish({ exitCode: 137 });
+    await running;
+    expect(settled).toBe(true);
+  });
+
+  it("contains an asynchronous kill rejection and still awaits process and log settlement", async () => {
+    let finish!: (result: { exitCode: number }) => void;
+    const completed = new Promise<{ exitCode: number }>((resolve) => {
+      finish = resolve;
+    });
+    let closeStdout!: () => void;
+    const stdout = new ReadableStream<Uint8Array>({
+      start(controller) {
+        closeStdout = () => controller.close();
+      },
+    });
+    const kill = vi.fn(async () => {
+      throw new Error("async kill failed");
+    });
+    const spawn = vi.fn(async (): Promise<SandboxProcess> => ({
+      kill,
+      stderr: textStream(""),
+      stdout,
+      wait: () => completed,
+    }));
+    const session = buildSandboxSession(createTestPrimitives({ spawn }));
+    const controller = new AbortController();
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const running = session.run({ abortSignal: controller.signal, command: "sleep 120" });
+      let settled = false;
+      void running.then(() => {
+        settled = true;
+      });
+      await spawn.mock.results[0]?.value;
+
+      controller.abort(new Error("cancelled"));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(kill).toHaveBeenCalledOnce();
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(settled).toBe(false);
+
+      closeStdout();
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      finish({ exitCode: 137 });
+      await running;
+      expect(settled).toBe(true);
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
   it("does not pollute stderr with framework command progress logs", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const spawn = vi.fn(async () => syntheticProcess({ exitCode: 0, stdout: "hello" }));

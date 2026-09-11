@@ -1,5 +1,6 @@
-import { getAdapterKind } from "#channel/adapter.js";
+import { getAdapterKind as kindOf } from "#channel/adapter.js";
 import { buildCallbackContext } from "#context/build-callback-context.js";
+import { ContinuationTokenKey } from "#context/keys.js";
 import { withContextScope } from "#context/run-step.js";
 import { deserializeContext } from "#context/serialize.js";
 import { createDurableSessionState, readDurableSession } from "#execution/durable-session-store.js";
@@ -19,14 +20,13 @@ export async function releaseSessionResourcesStep(input: {
   readonly requireSettledCohort?: boolean;
   readonly serializedContext: Record<string, unknown>;
   readonly sessionState: DurableSessionState;
-}): Promise<DurableSessionState> {
+}): Promise<DurableSessionState | undefined> {
   "use step";
-
   const ctx = await deserializeContext(input.serializedContext);
   const bundle = ctx.require(BundleKey);
-  if (bundle.hookRegistry.releases.length === 0) return input.sessionState;
-
+  if (bundle.hookRegistry.releases.length === 0) return;
   const adapter = ctx.get(ChannelKey);
+  const kind = adapter === undefined ? undefined : kindOf(adapter);
   const durable = await readDurableSession(input.sessionState);
   const effectiveAgent = resolveEffectiveAgentRuntime(bundle, ctx);
   const session = hydrateDurableSession({
@@ -41,13 +41,13 @@ export async function releaseSessionResourcesStep(input: {
       pending.hasPendingAuthorization ||
       pending.hasPendingInputBatch)
   )
-    return input.sessionState;
+    return;
 
   const scoped = await withContextScope(ctx, session, async (enriched) => {
     const hookCtx = {
       ...buildCallbackContext(),
       agent: { name: bundle.turnAgent.id, nodeId: bundle.nodeId },
-      channel: { kind: adapter === undefined ? undefined : getAdapterKind(adapter) },
+      channel: { continuationToken: ctx.get(ContinuationTokenKey), kind },
     };
     for (const release of bundle.hookRegistry.releases) {
       try {

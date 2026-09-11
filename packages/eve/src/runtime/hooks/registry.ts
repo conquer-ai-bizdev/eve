@@ -3,16 +3,15 @@ import type { ReleaseHook, ReleaseReason, StreamEventHook } from "../../public/d
 import type { ResolvedHookDefinition } from "../types.js";
 
 const RELEASE_INTENT_CONTEXT_KEY = "eve.releaseReason";
-type SerializedContext = Record<string, unknown>;
 
 export function stampReleaseIntent(
-  context: SerializedContext,
+  context: Record<string, unknown>,
   reason: ReleaseReason | undefined,
-): SerializedContext {
+): Record<string, unknown> {
   return reason === undefined ? context : { ...context, [RELEASE_INTENT_CONTEXT_KEY]: reason };
 }
 
-export function takeReleaseIntent(context: SerializedContext): ReleaseReason | undefined {
+export function takeReleaseIntent(context: Record<string, unknown>): ReleaseReason | undefined {
   const reason = context[RELEASE_INTENT_CONTEXT_KEY];
   delete context[RELEASE_INTENT_CONTEXT_KEY];
   return reason === "completed" || reason === "failed" || reason === "cancelled"

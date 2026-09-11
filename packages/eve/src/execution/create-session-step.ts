@@ -96,8 +96,6 @@ export async function createSessionStep(input: {
     workflowMaxSubagents: bundle.resolvedAgent.workflowTool?.maxSubagents,
   });
 
-  return {
-    hasReleaseHooks: bundle.hookRegistry.releases.length > 0,
-    state: createDurableSessionState({ session }),
-  };
+  const hasReleaseHooks = bundle.hookRegistry.releases.length > 0;
+  return { hasReleaseHooks, state: createDurableSessionState({ session }) };
 }

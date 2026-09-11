@@ -52,10 +52,9 @@ export async function resolveHookDefinition(
     }
 
     let release: ReleaseHook | undefined;
-    const lifecycleRaw = resolvedRecord.lifecycle;
-    if (lifecycleRaw !== undefined) {
+    if (resolvedRecord.lifecycle !== undefined) {
       const lifecycle = expectObjectRecord(
-        lifecycleRaw,
+        resolvedRecord.lifecycle,
         describe(definition, "to expose `lifecycle` as an object"),
       );
       if (lifecycle.release !== undefined) {

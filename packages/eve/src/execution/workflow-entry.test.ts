@@ -121,7 +121,7 @@ vi.mock("./continuation-conflict-step.js", () => ({
 }));
 
 vi.mock("./release-session-resources-step.js", () => ({
-  releaseSessionResourcesStep: vi.fn(async ({ sessionState }) => sessionState),
+  releaseSessionResourcesStep: vi.fn(async ({ sessionState }) => ({ ...sessionState })),
 }));
 
 function createSessionStateForMock(
@@ -329,6 +329,45 @@ describe("workflowEntry", () => {
     });
 
     expect(vi.mocked(dispatchTurnStep).mock.calls[1]?.[0].sessionState).toBe(releasedState);
+  });
+
+  it("releases a completed cohort once when caller notification fails", async () => {
+    const sessionState = createBaseSessionState();
+    const caller = {
+      callId: "call-1",
+      replyTo: { kind: "hook" as const, token: "parent-turn" },
+      subagentName: "researcher",
+    };
+    vi.mocked(createSessionStep).mockResolvedValue({
+      ...createSessionStepResultForMock(sessionState),
+      hasReleaseHooks: true,
+    });
+    vi.mocked(resolveInitialTurnCallerStep).mockResolvedValueOnce(caller);
+    vi.mocked(notifyTurnCallerStep).mockRejectedValueOnce(new Error("notification failed"));
+    installHookMocks({
+      turnControls: [
+        turnResult({
+          action: "park",
+          serializedContext: { "eve.releaseReason": "completed" },
+          sessionState,
+          settled: { output: "answer" },
+        }),
+      ],
+    });
+
+    await expect(
+      workflowEntry({
+        input: { message: "delegate" },
+        serializedContext: createSerializedContext({ "eve.sessionCallback": {} }),
+      }),
+    ).rejects.toMatchObject({ name: "EveWorkflowFailure" });
+
+    expect(releaseSessionResourcesStep).toHaveBeenCalledExactlyOnceWith({
+      reason: "completed",
+      requireSettledCohort: false,
+      serializedContext: {},
+      sessionState,
+    });
   });
 
   it("retains caller steps and task start notification for a callback task turn", async () => {
@@ -835,10 +874,20 @@ describe("workflowEntry", () => {
 
   it("does not emit session.failed when notification fails after terminal completion", async () => {
     const sessionState = createBaseSessionState();
-    vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
+    vi.mocked(createSessionStep).mockResolvedValue({
+      ...createSessionStepResultForMock(sessionState),
+      hasReleaseHooks: true,
+    });
     vi.mocked(fireSessionCallbackStep).mockRejectedValueOnce(new Error("callback failed"));
     installHookMocks({
-      turnControls: [turnResult({ action: "done", output: "ok", sessionState })],
+      turnControls: [
+        turnResult({
+          action: "done",
+          output: "ok",
+          serializedContext: { "eve.releaseReason": "completed" },
+          sessionState,
+        }),
+      ],
     });
 
     await expect(
@@ -851,6 +900,12 @@ describe("workflowEntry", () => {
     expect(fireSessionCallbackStep).toHaveBeenCalledOnce();
     expect(emitTerminalSessionFailureStep).not.toHaveBeenCalled();
     expect(notifyDelegatedParentStep).not.toHaveBeenCalled();
+    expect(releaseSessionResourcesStep).toHaveBeenCalledOnce();
+    expect(releaseSessionResourcesStep).toHaveBeenCalledWith({
+      reason: "completed",
+      serializedContext: {},
+      sessionState,
+    });
   });
 
   it("rejects the delegated caller when the session fails before the caller is resolved", async () => {
@@ -1390,7 +1445,10 @@ describe("workflowEntry", () => {
       emissionState: { sequence: 1, sessionStarted: true, stepIndex: 0, turnId: "" },
     });
     const settledContext = { "eve.sessionId": "wrun_test_123", settled: true };
-    vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
+    vi.mocked(createSessionStep).mockResolvedValue({
+      ...createSessionStepResultForMock(sessionState),
+      hasReleaseHooks: true,
+    });
     vi.mocked(settleCancelledTurnStep).mockResolvedValue({
       serializedContext: settledContext,
       sessionState: settledState,
@@ -1426,6 +1484,12 @@ describe("workflowEntry", () => {
         turnId: "turn_0",
       }),
     );
+    expect(releaseSessionResourcesStep).toHaveBeenCalledExactlyOnceWith({
+      reason: "cancelled",
+      requireSettledCohort: true,
+      serializedContext: settledContext,
+      sessionState: settledState,
+    });
   });
 
   it("does not settle an ordinary park as cancelled", async () => {
