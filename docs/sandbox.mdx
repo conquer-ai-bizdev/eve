@@ -73,6 +73,22 @@ A `SandboxProcess` exposes `stdout`/`stderr` byte streams, `wait()` (resolves wi
 
 `sandbox.id` is a stable per-session identifier that persists across reconnects to the same logical session. Use it as the cache key for per-session state that must outlive individual step executions.
 
+### Operator commands
+
+An authenticated server-side operator route can run Bash against an agent's normal sandbox lifecycle without invoking the model:
+
+```ts
+import { runOperatorSandboxCommand } from "eve/operator";
+
+const result = await runOperatorSandboxCommand({
+  command: "git status --short",
+  sessionId: durableSessionId,
+  target: "root",
+});
+```
+
+The supplied session ID selects the same sandbox key as ordinary agent tools. The call creates or reattaches the sandbox, applies `bootstrap` and `onSession` when required, and preserves it after the command. This function does not authenticate the caller; expose it only behind an application-owned operator authorization boundary.
+
 The option types (`SandboxSpawnOptions`, `SandboxReadBinaryFileOptions`, `SandboxWriteBinaryFileOptions`, and so on) are named exports from `eve/sandbox`, alongside `SandboxProcess`.
 
 ## Inbound attachments

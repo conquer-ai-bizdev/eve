@@ -230,6 +230,11 @@
       "import": "./dist/src/public/hooks/index.js",
       "default": "./dist/src/public/hooks/index.js"
     },
+    "./operator": {
+      "types": "./dist/src/public/operator/index.d.ts",
+      "import": "./dist/src/public/operator/index.js",
+      "default": "./dist/src/public/operator/index.js"
+    },
     "./sandbox": {
       "types": "./dist/src/public/sandbox/index.d.ts",
       "import": "./dist/src/public/sandbox/index.js",
