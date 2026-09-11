@@ -39,7 +39,6 @@ import {
 import { TurnExecutionCursor } from "#execution/turn-execution-cursor.js";
 import { resolveWorkflowCallbackBaseUrl } from "#execution/workflow-callback-url.js";
 import { normalizeSerializableError } from "#execution/workflow-errors.js";
-import { stampReleaseIntent } from "#runtime/hooks/registry.js";
 import { turnStep } from "#execution/workflow-steps.js";
 import { activeTurnId } from "#harness/active-turn-id.js";
 import { resolveRuntimeActionResultsForCallIds } from "#runtime/actions/results.js";
@@ -309,10 +308,7 @@ async function finishCancelledTurn(input: {
   });
   await input.cancellation?.dispose();
   await input.cursor.finish(
-    {
-      serializedContext: stampReleaseIntent(input.cursor.serializedContext, "cancelled"),
-      sessionState: input.cursor.sessionState,
-    },
+    { sessionState: input.cursor.sessionState },
     { cancelled: true, kind: "park" },
     input.bufferedDeliveries,
   );

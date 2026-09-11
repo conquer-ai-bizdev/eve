@@ -415,7 +415,7 @@ describe("turnWorkflow", () => {
       action: {
         cancelled: true,
         kind: "park",
-        serializedContext: { "eve.releaseReason": "cancelled", state: "cancelled" },
+        serializedContext: { state: "cancelled" },
         sessionState: cancelledState,
       },
       kind: "turn-result",
@@ -483,7 +483,7 @@ describe("turnWorkflow", () => {
       action: {
         cancelled: true,
         kind: "park",
-        serializedContext: { "eve.releaseReason": "cancelled", state: "completed" },
+        serializedContext: { state: "completed" },
         sessionState: completedState,
       },
       kind: "turn-result",
@@ -1241,7 +1241,7 @@ describe("turnWorkflow", () => {
       action: {
         cancelled: true,
         kind: "park",
-        serializedContext: { "eve.releaseReason": "cancelled", state: "proxied" },
+        serializedContext: { state: "proxied" },
         sessionState: retiredProxyState,
       },
       kind: "turn-result",

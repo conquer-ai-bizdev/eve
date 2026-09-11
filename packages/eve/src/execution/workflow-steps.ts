@@ -648,6 +648,10 @@ export async function turnStep(rawInput: TurnStepInput): Promise<DurableStepResu
 
     const pending = derivePendingState(stepResult.session);
 
+    // `settledTurn` is the harness's explicit settlement verdict. Pending
+    // state may predate this turn, while newly created parks omit the verdict.
+    // `usage` carries only this turn's delta: the take marks the totals
+    // reported, so a persistent child never re-reports earlier spend.
     if (stepResult.settledTurn !== undefined) {
       const { delta, session: reportedSession } = takeSessionUsageDelta(stepResult.session);
       return {

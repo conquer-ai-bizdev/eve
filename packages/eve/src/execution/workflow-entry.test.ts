@@ -1297,7 +1297,10 @@ describe("workflowEntry", () => {
     const settledState = createBaseSessionState({
       emissionState: { sequence: 1, sessionStarted: true, stepIndex: 0, turnId: "" },
     });
-    vi.mocked(createSessionStep).mockResolvedValue(createSessionStepResultForMock(sessionState));
+    vi.mocked(createSessionStep).mockResolvedValue({
+      ...createSessionStepResultForMock(sessionState),
+      hasReleaseHooks: true,
+    });
     vi.mocked(settleCancelledTurnStep).mockResolvedValue({
       serializedContext: { "eve.sessionId": "wrun_test_123", settled: true },
       sessionState: settledState,
@@ -1336,6 +1339,12 @@ describe("workflowEntry", () => {
     });
     expect(vi.mocked(dispatchTurnStep).mock.calls[1]?.[0]).toMatchObject({
       serializedContext: { settled: true },
+      sessionState: settledState,
+    });
+    expect(releaseSessionResourcesStep).toHaveBeenCalledWith({
+      reason: "cancelled",
+      requireSettledCohort: true,
+      serializedContext: { "eve.sessionId": "wrun_test_123", settled: true },
       sessionState: settledState,
     });
     expect(notifyTurnCallerStep).not.toHaveBeenCalled();

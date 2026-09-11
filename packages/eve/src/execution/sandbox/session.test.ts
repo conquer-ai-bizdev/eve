@@ -121,6 +121,60 @@ describe("buildSandboxSession", () => {
     expect(result).toEqual({ exitCode: 0, stderr: "", stdout: "hello" });
   });
 
+  it("kills a spawned run when its abort signal fires", async () => {
+    let finish!: (result: { exitCode: number }) => void;
+    const completed = new Promise<{ exitCode: number }>((resolve) => {
+      finish = resolve;
+    });
+    const kill = vi.fn(async () => finish({ exitCode: 137 }));
+    const spawn = vi.fn(async (): Promise<SandboxProcess> => ({
+      kill,
+      stderr: textStream(""),
+      stdout: textStream(""),
+      wait: () => completed,
+    }));
+    const session = buildSandboxSession(createTestPrimitives({ spawn }));
+    const controller = new AbortController();
+    const running = session.run({ abortSignal: controller.signal, command: "sleep 120" });
+
+    await spawn.mock.results[0]?.value;
+    controller.abort(new Error("cancelled"));
+    await running;
+
+    expect(kill).toHaveBeenCalledOnce();
+  });
+
+  it.each(["before", "after"] as const)(
+    "kills once when abort fires %s listener registration",
+    async (timing) => {
+      let finish!: (result: { exitCode: number }) => void;
+      const completed = new Promise<{ exitCode: number }>((resolve) => {
+        finish = resolve;
+      });
+      const kill = vi.fn(async () => finish({ exitCode: 137 }));
+      const spawn = vi.fn(async (): Promise<SandboxProcess> => ({
+        kill,
+        stderr: textStream(""),
+        stdout: textStream(""),
+        wait: () => completed,
+      }));
+      const session = buildSandboxSession(createTestPrimitives({ spawn }));
+      const controller = new AbortController();
+      const register = controller.signal.addEventListener.bind(controller.signal);
+      vi.spyOn(controller.signal, "addEventListener").mockImplementation(
+        (type, listener, options) => {
+          if (timing === "before") controller.abort(new Error("cancelled"));
+          register(type, listener, options);
+          if (timing === "after") controller.abort(new Error("cancelled"));
+        },
+      );
+
+      await session.run({ abortSignal: controller.signal, command: "sleep 120" });
+
+      expect(kill).toHaveBeenCalledOnce();
+    },
+  );
+
   it("does not pollute stderr with framework command progress logs", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const spawn = vi.fn(async () => syntheticProcess({ exitCode: 0, stdout: "hello" }));

@@ -529,7 +529,8 @@ async function runDriverLoop(input: {
       // `settled` rides the typed park arm exclusively; `run-step` preserves
       // the full StepResult so no state-key fallback exists anymore.
       const settled = action.settled;
-      const releaseReason = takeReleaseIntent(stateCursor.serializedContext);
+      let releaseReason = takeReleaseIntent(stateCursor.serializedContext);
+      if (action.cancelled) releaseReason = "cancelled";
       if (input.hasReleaseHooks && releaseReason !== undefined) {
         stateCursor.adoptState({
           sessionState: await releaseSessionResourcesStep({

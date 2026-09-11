@@ -25,6 +25,7 @@ export type { InternalSandboxSession };
  * read/write primitives. `run` is implemented as a thin wrapper over the
  * backend's `spawn`: collect stdout/stderr to strings, await `wait()`,
  * then return the combined result.
+ * Aborting a run also kills its spawned process.
  *
  * `setNetworkPolicy` applies a firewall policy to the live sandbox. It
  * defaults to a no-op so backends without a firewall (and test doubles)
@@ -36,11 +37,16 @@ export function buildSandboxSession(
 ): SandboxSession {
   async function run(options: SandboxRunOptions) {
     const process = await primitives.spawn(options);
+    const signal = options.abortSignal;
+    let killPromise: PromiseLike<void> | undefined;
+    const abort = () => void Promise.resolve((killPromise ??= process.kill())).catch(() => {});
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     const [stdout, stderr, { exitCode }] = await Promise.all([
       collectStreamToString(process.stdout),
       collectStreamToString(process.stderr),
       process.wait(),
-    ]);
+    ]).finally(() => signal?.removeEventListener("abort", abort));
     return { exitCode, stderr, stdout };
   }
   return {
