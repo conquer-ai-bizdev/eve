@@ -260,7 +260,7 @@ export default defineSandbox({
 });
 ```
 
-Sessions are persistent, and how the underlying runtime idles out depends on the backend. On the Vercel backend, the VM times out after a period of inactivity (default 30 minutes); eve preserves the filesystem and resumes the sandbox on the next message while the persisted sandbox remains available. The Docker backend keeps a long-lived container per durable session and persists `/workspace` across turns without that timeout, and the just-bash backend stores its virtual filesystem under `.eve/sandbox-cache/`.
+Sessions are persistent by default, and how the underlying runtime idles out depends on the backend. On the Vercel backend, the VM times out after a period of inactivity (default 30 minutes); eve preserves the filesystem and resumes the sandbox on the next message while the persisted sandbox remains available. Set `persistent: false` on `vercel()` when a stopped session sandbox should not create a persistence snapshot. The Docker backend keeps a long-lived container per durable session and persists `/workspace` across turns without that timeout, and the just-bash backend stores its virtual filesystem under `.eve/sandbox-cache/`.
 
 Authored runtime callbacks can stop compute sooner through the handle returned
 by `ctx.getSandbox()`:

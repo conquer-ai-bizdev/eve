@@ -472,7 +472,7 @@ function createSessionCreateParams(
     return withBaseSetupNetworkPolicy({
       ...createOptions,
       name: sandboxName,
-      persistent: true,
+      persistent: createOptions.persistent ?? true,
     });
   }
 
@@ -493,7 +493,7 @@ function createSessionCreateParams(
   return {
     ...baseSessionCreateOptions,
     name: sandboxName,
-    persistent: true,
+    persistent: createOptions.persistent ?? true,
     source: { snapshotId: input.snapshotId, type: "snapshot" as const },
   };
 }

@@ -683,6 +683,57 @@ describe("createVercelSandbox", () => {
     });
   });
 
+  it("preserves persistent false for template-backed and template-less sessions", async () => {
+    const templateSandbox = createMockSandbox({ name: "template" });
+    const backedSession = createMockSandbox({ name: "backed-session" });
+    const freshSession = createMockSandbox({ name: "fresh-session" });
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce(templateSandbox)
+      .mockResolvedValueOnce(backedSession)
+      .mockResolvedValueOnce(freshSession);
+    const sandboxModule = {
+      Sandbox: {
+        create,
+        get: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const backend = createTestVercelSandbox({
+      createOptions: { persistent: false },
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    await backend.prewarm({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      seedFiles: [],
+      templateKey: "template-key",
+    });
+    await backend.create({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "backed-session-key",
+      templateKey: "template-key",
+    });
+    await backend.create({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "fresh-session-key",
+      templateKey: null,
+    });
+
+    expect(create.mock.calls[0]?.[0]).toMatchObject({
+      name: "template-key",
+      persistent: true,
+    });
+    expect(create.mock.calls[1]?.[0]).toMatchObject({
+      name: "backed-session-key",
+      persistent: false,
+      source: { snapshotId: "template-snapshot", type: "snapshot" },
+    });
+    expect(create.mock.calls[2]?.[0]).toMatchObject({
+      name: "fresh-session-key",
+      persistent: false,
+    });
+  });
+
   it("creates a fresh session without reading or snapshotting a template when templateKey is null", async () => {
     const sessionSandbox = createMockSandbox({ name: "session" });
     const create = vi.fn().mockResolvedValueOnce(sessionSandbox);

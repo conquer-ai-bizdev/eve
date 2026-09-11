@@ -24,4 +24,8 @@ describe("vercel", () => {
     ).toMatchTypeOf<VercelSandboxSessionCreateOptions>();
     expectTypeOf<VercelSandboxOptions>().not.toHaveProperty("mounts");
   });
+
+  it("accepts non-persistent session sandboxes", () => {
+    expect(vercel({ persistent: false }).name).toBe("vercel");
+  });
 });

@@ -9,7 +9,7 @@ type VercelSandboxInternalCreateOptions = {
 };
 
 type VercelSandboxAuthorCreateOptions<T> = T extends unknown
-  ? Omit<T, "mounts" | "name" | "onResume" | "persistent" | "runtime" | "signal"> &
+  ? Omit<T, "mounts" | "name" | "onResume" | "runtime" | "signal"> &
       VercelSandboxInternalCreateOptions
   : never;
 
@@ -25,9 +25,10 @@ type VercelSandboxAuthorCreateOptions<T> = T extends unknown
  * session creates receive it at creation time because the template
  * already contains the prepared base runtime.
  *
- * Framework-injected fields (`name`, `onResume`, `persistent`, `signal`)
- * are excluded: the framework owns those and overrides any
- * author-supplied values.
+ * Framework-injected fields (`name`, `onResume`, `signal`) are excluded: the
+ * framework owns those and overrides any author-supplied values. Session
+ * sandboxes are persistent by default; set `persistent: false` to prevent
+ * Vercel from creating a persistence snapshot when a session sandbox stops.
  *
  * `runtime` is excluded: eve defaults to its published
  * `vcr.vercel.com/vercel/eve/base` image tagged with the installed eve version
