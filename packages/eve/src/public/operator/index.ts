@@ -7,6 +7,39 @@ import { createBundledRuntimeCompiledArtifactsSource } from "#runtime/compiled-a
 import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-cache.js";
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
 import type { ToolContext } from "#tools/definition.js";
+import { EntityConflictError } from "#compiled/@workflow/errors/index.js";
+import { getRun } from "#internal/workflow/runtime.js";
+
+export interface OperatorWorkflowCancellationResult {
+  readonly runId: string;
+  readonly statusAfter: string;
+  readonly statusBefore: string;
+}
+
+/** Reads the provider status for one exact workflow run. */
+export async function getOperatorWorkflowRunStatus(runId: string): Promise<string> {
+  return readRunStatus(getRun(runId));
+}
+
+/** Terminally cancels one workflow run after cooperative session control has failed. */
+export async function cancelOperatorWorkflowRun(
+  runId: string,
+): Promise<OperatorWorkflowCancellationResult> {
+  const run = getRun(runId);
+  const statusBefore = await readRunStatus(run);
+  let statusAfter: string | undefined;
+  if (!isTerminalRunStatus(statusBefore)) {
+    try {
+      await run.cancel();
+    } catch (error) {
+      if (!(error instanceof EntityConflictError)) throw error;
+      const freshStatus = await readRunStatus(run);
+      if (!isTerminalRunStatus(freshStatus)) throw error;
+      statusAfter = freshStatus;
+    }
+  }
+  return { runId, statusAfter: statusAfter ?? (await readRunStatus(run)), statusBefore };
+}
 
 export interface OperatorSandboxCommandOptions {
   readonly appRoot?: string;
@@ -110,6 +143,15 @@ function normalizeTarget(target: string): string {
   const value = target.trim();
   if (!value || value === "agent" || value === "root" || value === "__root__") return "__root__";
   return value.startsWith("subagents/") ? value : `subagents/${value}`;
+}
+
+async function readRunStatus(run: { readonly status: Promise<unknown> }): Promise<string> {
+  const status = await run.status;
+  return typeof status === "string" ? status : JSON.stringify(status);
+}
+
+function isTerminalRunStatus(status: string): boolean {
+  return status === "cancelled" || status === "completed" || status === "failed";
 }
 
 function normalizeResult(result: unknown): { exitCode: number; stderr: string; stdout: string } {

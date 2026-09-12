@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   ensureSandboxAccess: vi.fn(),
   getCompiledRuntimeAgentBundle: vi.fn(),
+  getRun: vi.fn(),
 }));
 
 vi.mock("#execution/sandbox/ensure.js", () => ({
@@ -11,8 +12,44 @@ vi.mock("#execution/sandbox/ensure.js", () => ({
 vi.mock("#runtime/sessions/compiled-agent-cache.js", () => ({
   getCompiledRuntimeAgentBundle: mocks.getCompiledRuntimeAgentBundle,
 }));
+vi.mock("#internal/workflow/runtime.js", () => ({ getRun: mocks.getRun }));
 
-import { runOperatorSandboxCommand } from "./index.js";
+import {
+  cancelOperatorWorkflowRun,
+  getOperatorWorkflowRunStatus,
+  runOperatorSandboxCommand,
+} from "./index.js";
+
+describe("operator workflow cancellation", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("terminally cancels an active workflow run", async () => {
+    let status = "running";
+    const cancel = vi.fn(async () => {
+      status = "cancelled";
+    });
+    mocks.getRun.mockReturnValue({
+      cancel,
+      get status() {
+        return Promise.resolve(status);
+      },
+    });
+
+    await expect(cancelOperatorWorkflowRun("wrun_1")).resolves.toEqual({
+      runId: "wrun_1",
+      statusAfter: "cancelled",
+      statusBefore: "running",
+    });
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("reads the provider status for an exact workflow run", async () => {
+    mocks.getRun.mockReturnValue({ status: Promise.resolve("cancelled") });
+
+    await expect(getOperatorWorkflowRunStatus("wrun_1")).resolves.toBe("cancelled");
+    expect(mocks.getRun).toHaveBeenCalledWith("wrun_1");
+  });
+});
 
 describe("operator sandbox command", () => {
   beforeEach(() => vi.clearAllMocks());
