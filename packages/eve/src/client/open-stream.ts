@@ -165,6 +165,7 @@ export async function* followStreamIterable(
     try {
       for await (const event of readNdjsonStream(connection.body, {
         idleTimeoutMs: input.streamReadIdleTimeoutMs ?? DEFAULT_STREAM_READ_IDLE_TIMEOUT_MS,
+        signal: input.signal,
         streamVersion: connection.streamVersion,
       })) {
         startIndex += 1;
