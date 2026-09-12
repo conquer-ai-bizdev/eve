@@ -303,6 +303,20 @@ export function eveChannel(input: EveChannelInput): EveChannel {
         const body = parseSessionMessageBody(payload);
         if (body instanceof Response) return body;
 
+        if (body.operationId !== undefined && forwarded.auth.principalType === "anonymous") {
+          return Response.json(
+            { error: "operationId requires an authenticated principal.", ok: false },
+            { status: 400 },
+          );
+        }
+        const operationId =
+          body.operationId === undefined
+            ? undefined
+            : await deriveOperationContinuationToken({
+                auth: forwarded.auth,
+                operationId: `send:${sessionId}:${body.operationId}`,
+              });
+
         const policyRejection = checkUploadPolicy(body, uploadPolicy);
         if (policyRejection !== null) return policyRejection;
 
@@ -330,6 +344,7 @@ export function eveChannel(input: EveChannelInput): EveChannel {
               auth: dispatchAuth,
               callback: body.callback,
               context,
+              operationId,
               outputSchema: body.outputSchema,
               turnPolicy: body.turnPolicy,
             },

@@ -114,6 +114,12 @@ export interface SendTurnOptions<TOutput = unknown> {
   readonly turnPolicy?: TurnPolicy;
 
   /**
+   * Replay-stable identity for one authenticated create or session-send operation.
+   * Reusing the same value delivers the operation once.
+   */
+  readonly operationId?: string;
+
+  /**
    * Ephemeral client/page context for the current turn.
    *
    * Strings are rendered as user-role model context messages. Objects are

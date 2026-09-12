@@ -66,6 +66,8 @@ interface SessionDeliveryOptions {
   /** Public callback destination for a delegated continuation turn. */
   readonly callback?: SessionCallback;
   readonly context?: readonly string[];
+  /** Replay-stable identity for exactly-once delivery. */
+  readonly operationId?: string;
   readonly outputSchema?: JsonObject;
 }
 
@@ -99,7 +101,7 @@ export function createSession(
   return {
     id,
     async send(message, options) {
-      const delivery = createDelivery(metadata);
+      const delivery = createDelivery(metadata, options.operationId);
       const caller = sessionCallbackToTurnCaller(options.callback, options.activityObserver);
       const payload = attachClientContext<{
         context?: readonly string[];
@@ -114,6 +116,7 @@ export function createSession(
         kind: "send" as const,
         payload,
         requestId: metadata.requestId,
+        ...(options.operationId === undefined ? {} : { taskDeliveryId: options.operationId }),
         turnPolicy: options.turnPolicy ?? metadata.turnPolicy ?? DEFAULT_TURN_POLICY,
       };
       return await runtime.dispatchSession({
@@ -127,7 +130,7 @@ export function createSession(
       }
       const validatedInputResponses = parseInputResponses(inputResponses);
       const caller = sessionCallbackToTurnCaller(options.callback, options.activityObserver);
-      const delivery = createDelivery(metadata);
+      const delivery = createDelivery(metadata, options.operationId);
       const payload = attachClientContext<{
         context?: readonly string[];
         inputResponses: readonly InputResponse[];
@@ -141,6 +144,7 @@ export function createSession(
         kind: "send" as const,
         payload,
         requestId: metadata.requestId,
+        ...(options.operationId === undefined ? {} : { taskDeliveryId: options.operationId }),
       };
       return await runtime.dispatchSession({
         command: caller === undefined ? commandWithoutCaller : { ...commandWithoutCaller, caller },
@@ -187,10 +191,11 @@ export function createAttachSessionFn(
 
 function createDelivery(
   metadata: Partial<ChannelDeliverySource>,
+  operationId?: string,
 ): ReturnType<typeof createChannelDeliveryMetadata> | undefined {
-  return metadata.channelKind !== undefined && metadata.channelName !== undefined
-    ? createChannelDeliveryMetadata(metadata as ChannelDeliverySource)
-    : undefined;
+  if (metadata.channelKind === undefined || metadata.channelName === undefined) return undefined;
+  const delivery = createChannelDeliveryMetadata(metadata as ChannelDeliverySource);
+  return operationId === undefined ? delivery : { ...delivery, deliveryId: operationId };
 }
 
 /**

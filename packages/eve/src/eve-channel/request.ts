@@ -128,6 +128,7 @@ interface ParsedSessionMessageBody {
   callback?: SessionCallback;
   message?: string | UserContent;
   inputResponses?: readonly ValidatedInputResponse[];
+  operationId?: string;
   context?: readonly string[];
   outputSchema?: JsonObject;
   turnPolicy?: TurnPolicy;
@@ -157,6 +158,13 @@ export function parseSessionMessageBody(
   if (outputSchema instanceof Response) return outputSchema;
   const turnPolicy = parseTurnPolicyField(payload.turnPolicy);
   if (turnPolicy instanceof Response) return turnPolicy;
+  const rawOperationId = payload.operationId;
+  if (rawOperationId !== undefined && (typeof rawOperationId !== "string" || !rawOperationId)) {
+    return Response.json(
+      { error: "Expected 'operationId' to be a non-empty string.", ok: false },
+      { status: 400 },
+    );
+  }
 
   if (message === undefined && inputResponses === undefined) {
     return Response.json(
@@ -180,6 +188,7 @@ export function parseSessionMessageBody(
     callback,
     message,
     inputResponses,
+    operationId: typeof rawOperationId === "string" ? rawOperationId : undefined,
     context,
     outputSchema,
     turnPolicy,

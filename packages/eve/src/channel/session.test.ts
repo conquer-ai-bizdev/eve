@@ -135,6 +135,23 @@ describe("fixed session operations", () => {
     );
   });
 
+  it("uses one replay identity for the delivery receipt and inbox deduplication", async () => {
+    const runtime = createRuntime();
+    const session = createSession("sess_1", runtime, {
+      channelKind: "channel:eve",
+      channelName: "eve",
+    });
+
+    await session.send("hello", { auth: null, operationId: "delivery-operation-1" });
+
+    const command = vi.mocked(runtime.dispatchSession).mock.calls[0]?.[0].command;
+    expect(command).toMatchObject({
+      delivery: { deliveryId: "delivery-operation-1" },
+      kind: "send",
+      taskDeliveryId: "delivery-operation-1",
+    });
+  });
+
   it("dispatches every operation through the stable session id", async () => {
     const runtime = createRuntime();
     const session = createAttachSessionFn(runtime, { requestId: "req_1" })("sess_1");

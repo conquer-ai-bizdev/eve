@@ -1577,6 +1577,31 @@ describe("eveChannel — continue session HITL (inputResponses)", () => {
     });
   });
 
+  it("derives the same authenticated session delivery identity for an operation retry", async () => {
+    const handler = createEveContinueHandler({ auth: () => ACCEPTED_AUTH });
+    const request = () =>
+      createJsonMessageRequest({ message: "follow-up", operationId: "tool-call-1" });
+
+    expect((await handler.fetch(request())).status).toBe(202);
+    expect((await handler.fetch(request())).status).toBe(202);
+
+    const first = handler.send.mock.calls[0]?.[1]?.operationId;
+    const second = handler.send.mock.calls[1]?.[1]?.operationId;
+    expect(first).toMatch(/^eve:op:[0-9a-f]{32}$/);
+    expect(second).toBe(first);
+  });
+
+  it("rejects an anonymous session delivery operation id", async () => {
+    const handler = createEveContinueHandler({ auth: none() });
+
+    const response = await handler.fetch(
+      createJsonMessageRequest({ message: "follow-up", operationId: "tool-call-1" }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(handler.send).not.toHaveBeenCalled();
+  });
+
   it("returns a structured 500 when fixed-session delivery fails", async () => {
     const handler = createEveContinueHandler({ auth: none() });
     handler.send.mockRejectedValue(new Error("backing store outage"));

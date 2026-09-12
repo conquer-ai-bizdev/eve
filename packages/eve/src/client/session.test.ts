@@ -567,6 +567,19 @@ describe("ClientSession", () => {
     });
   });
 
+  it("serializes replay identity with a fixed-session message", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(createAcceptedResponse());
+    const session = createSession();
+
+    await session.send("Deliver once", { operationId: "tool-call-1" });
+
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      message: "Deliver once",
+      operationId: "tool-call-1",
+    });
+  });
+
   it("serializes clientContext when continuing a session", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(createAcceptedResponse());
     const session = createSession({
