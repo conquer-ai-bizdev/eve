@@ -470,7 +470,7 @@ describe("normalizeMcpClientConnectionDefinition", () => {
   });
 
   describe("toolCall.providedArguments validation", () => {
-    it("accepts static, Promise, and function values", () => {
+    it("accepts static, omitted, Promise, and function values", () => {
       const resolver = () => ({ profile: "https://agent.example.com/profile" });
       const promised = Promise.resolve("request-id");
       const result = normalizeMcpClientConnectionDefinition(
@@ -478,6 +478,7 @@ describe("normalizeMcpClientConnectionDefinition", () => {
           toolCall: {
             providedArguments: {
               meta: resolver,
+              omitted: undefined,
               requestId: promised,
               version: 1,
             },
@@ -488,6 +489,7 @@ describe("normalizeMcpClientConnectionDefinition", () => {
 
       expect(result.toolCall?.providedArguments).toEqual({
         meta: resolver,
+        omitted: undefined,
         requestId: promised,
         version: 1,
       });

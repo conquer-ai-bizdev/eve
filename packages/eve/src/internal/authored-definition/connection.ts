@@ -141,7 +141,7 @@ function normalizeConnectionToolCall(
   );
 
   for (const [key, value] of Object.entries(providedArguments)) {
-    if (typeof value === "function") {
+    if (value === undefined || typeof value === "function") {
       continue;
     }
     if (

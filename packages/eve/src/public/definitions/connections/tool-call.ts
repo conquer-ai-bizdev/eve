@@ -11,15 +11,17 @@ export type ProvidedArgumentContext = SessionContext & {
 
 /** A static or per-call value for one application-provided connection tool argument. */
 export type ProvidedArgumentValue =
+  | undefined
   | JsonValue
-  | Promise<JsonValue>
-  | ((ctx: ProvidedArgumentContext) => JsonValue | Promise<JsonValue>);
+  | Promise<JsonValue | undefined>
+  | ((ctx: ProvidedArgumentContext) => JsonValue | undefined | Promise<JsonValue | undefined>);
 
 /**
  * Connection tool argument values supplied by the application instead of the model.
  *
  * Configured keys are removed from remote input schemas before the schemas are
- * exposed to the model, then resolved and added to every outgoing tool call.
+ * exposed to the model. Resolved JSON values are added to every outgoing tool
+ * call; `undefined` removes the argument entirely.
  */
 export type ProvidedArgumentsDefinition = Readonly<Record<string, ProvidedArgumentValue>>;
 

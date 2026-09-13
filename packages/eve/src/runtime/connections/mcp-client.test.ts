@@ -154,6 +154,58 @@ describe("McpConnectionClient", () => {
     );
   });
 
+  it("omits an application-owned argument when its resolver returns undefined", async () => {
+    const execute = vi.fn().mockResolvedValue({ ok: true });
+    const toolsFromDefinitions = vi.fn().mockReturnValue({ lookup: { execute } });
+    createMCPClient.mockResolvedValue({
+      close: vi.fn(),
+      listTools: vi.fn().mockResolvedValue({
+        tools: [
+          {
+            inputSchema: {
+              additionalProperties: false,
+              properties: {
+                filter: { type: "string" },
+                query: { type: "string" },
+              },
+              required: ["query"],
+              type: "object",
+            },
+            name: "lookup",
+          },
+        ],
+      }),
+      toolsFromDefinitions,
+    });
+
+    const mcpClient = new McpConnectionClient(
+      makeConnection({
+        toolCall: { providedArguments: { filter: () => undefined } },
+      }),
+    );
+
+    await contextStorage.run(ctxWithAuth(null), async () => {
+      await expect(
+        mcpClient.executeTool(
+          "lookup",
+          { filter: "from-model", query: "boots" },
+          { callId: "call-omit" },
+        ),
+      ).resolves.toEqual({ ok: true });
+    });
+
+    expect(toolsFromDefinitions).toHaveBeenCalledWith({
+      tools: [
+        expect.objectContaining({
+          inputSchema: expect.objectContaining({
+            properties: { query: { type: "string" } },
+          }),
+        }),
+      ],
+    });
+    expect(execute).toHaveBeenCalledWith({ query: "boots" }, expect.any(Object));
+  });
+
   it("creates an HTTP MCP client with resolved connection headers", async () => {
     const client = {
       close: vi.fn(),

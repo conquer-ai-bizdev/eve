@@ -1,7 +1,7 @@
 import { buildCallbackContext } from "#context/build-callback-context.js";
 import type { ResolvedConnectionDefinition } from "#runtime/types.js";
 import { isObject } from "#shared/guards.js";
-import { parseJsonValue, type JsonValue } from "#shared/json.js";
+import { parseJsonValue } from "#shared/json.js";
 
 /** Resolves and merges application-provided arguments, with application values winning. */
 export async function resolveProvidedArguments(input: {
@@ -33,15 +33,19 @@ export async function resolveProvidedArguments(input: {
       callId: input.callId,
       toolName: input.toolName,
     });
-  const provided: Record<string, JsonValue> = {};
+  const resolved = { ...input.args };
 
   for (const [key, configuredValue] of Object.entries(definition)) {
     const value =
       typeof configuredValue === "function"
         ? await configuredValue(getContext())
         : await configuredValue;
+    if (value === undefined) {
+      delete resolved[key];
+      continue;
+    }
     try {
-      provided[key] = parseJsonValue(value);
+      resolved[key] = parseJsonValue(value);
     } catch {
       throw new Error(
         `Connection "${input.connection.connectionName}" provided argument "${key}" must resolve to a JSON-serializable value.`,
@@ -49,7 +53,7 @@ export async function resolveProvidedArguments(input: {
     }
   }
 
-  return { ...input.args, ...provided };
+  return resolved;
 }
 
 /** Removes application-provided top-level properties from a remote tool schema. */
