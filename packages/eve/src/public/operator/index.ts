@@ -8,7 +8,7 @@ import { getCompiledRuntimeAgentBundle } from "#runtime/sessions/compiled-agent-
 import { BundleKey } from "#runtime/sessions/runtime-context-keys.js";
 import type { ToolContext } from "#tools/definition.js";
 import { EntityConflictError } from "#compiled/@workflow/errors/index.js";
-import { getRun } from "#internal/workflow/runtime.js";
+import { getRun, getWorld } from "#internal/workflow/runtime.js";
 
 export interface OperatorWorkflowCancellationResult {
   readonly runId: string;
@@ -19,6 +19,14 @@ export interface OperatorWorkflowCancellationResult {
 /** Reads the provider status for one exact workflow run. */
 export async function getOperatorWorkflowRunStatus(runId: string): Promise<string> {
   return readRunStatus(getRun(runId));
+}
+
+/** Reads the plaintext attributes for one exact workflow run. */
+export async function getOperatorWorkflowRunAttributes(
+  runId: string,
+): Promise<Readonly<Record<string, string>>> {
+  const run = await (await getWorld()).runs.get(runId, { resolveData: "none" });
+  return { ...run.attributes };
 }
 
 /** Terminally cancels one workflow run after cooperative session control has failed. */

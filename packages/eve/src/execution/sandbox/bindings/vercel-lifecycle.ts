@@ -49,11 +49,11 @@ async function deleteVercelSandboxRecord(input: {
   });
 }
 
-export async function stopVercelSandbox(sandbox: VercelSandbox): Promise<void> {
+export async function stopVercelSandbox(sandbox: VercelSandbox) {
   if (sandbox.status !== "running" && sandbox.status !== "pending") {
     return;
   }
-  await sandbox.stop();
+  return await sandbox.stop();
 }
 
 async function resolveVercelSandboxCredentials(

@@ -47,6 +47,7 @@ function createMockDetachedCommand(
 function createMockSandbox(input: {
   name: string;
   snapshotId?: string;
+  stopSnapshotId?: string;
   status?: string;
   tags?: Record<string, string>;
 }) {
@@ -76,7 +77,11 @@ function createMockSandbox(input: {
       ),
     snapshot: vi.fn().mockResolvedValue({ snapshotId: `${input.name}-snapshot` }),
     status: input.status ?? "running",
-    stop: vi.fn().mockResolvedValue(undefined),
+    stop: vi
+      .fn()
+      .mockResolvedValue(
+        input.stopSnapshotId === undefined ? undefined : { snapshot: { id: input.stopSnapshotId } },
+      ),
     get tags() {
       return tags;
     },
@@ -155,6 +160,105 @@ afterEach(() => {
 });
 
 describe("createVercelSandbox", () => {
+  it("reports the exact session sandbox and persistence snapshot identifiers", async () => {
+    const sessionSandbox = createMockSandbox({
+      name: "eve-session-resource",
+      stopSnapshotId: "snap_resource",
+    });
+    const sandboxModule = {
+      Sandbox: {
+        create: vi.fn().mockResolvedValue(sessionSandbox),
+        get: vi.fn().mockResolvedValue(null),
+      },
+    };
+    const reportResource = vi.fn();
+    const backend = createTestVercelSandbox({
+      loadSandboxModule: async () => sandboxModule as never,
+    });
+
+    const handle = await backend.create({
+      reportResource,
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "session-key",
+      templateKey: null,
+    });
+
+    expect(reportResource).toHaveBeenCalledWith({
+      id: "eve-session-resource",
+      provider: "vercel",
+      type: "sandbox",
+    });
+
+    await handle.shutdown();
+
+    expect(reportResource).toHaveBeenLastCalledWith({
+      id: "snap_resource",
+      provider: "vercel",
+      type: "snapshot",
+    });
+  });
+
+  it("does not attribute reusable template or author source snapshots to a session", async () => {
+    const template = createMockSandbox({ name: "template", snapshotId: "template-snapshot" });
+    const templateBacked = createMockSandbox({
+      name: "template-backed",
+      snapshotId: "template-snapshot",
+      status: "stopped",
+    });
+    const authorBacked = createMockSandbox({
+      name: "author-backed",
+      snapshotId: "author-snapshot",
+      status: "stopped",
+    });
+    const reportResource = vi.fn();
+    const templateBackend = createTestVercelSandbox({
+      loadSandboxModule: async () =>
+        ({
+          Sandbox: {
+            create: vi.fn(),
+            get: vi.fn(async ({ name }: { name: string }) =>
+              name === "template-key" ? template : templateBacked,
+            ),
+          },
+        }) as never,
+    });
+    await templateBackend.prewarm({
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      seedFiles: [],
+      templateKey: "template-key",
+    });
+    await templateBackend.create({
+      existingMetadata: { sandboxName: "template-backed" },
+      reportResource,
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "session-key",
+      templateKey: "template-key",
+    });
+
+    const authorBackend = createTestVercelSandbox({
+      createOptions: { source: { snapshotId: "author-snapshot", type: "snapshot" } } as never,
+      loadSandboxModule: async () =>
+        ({
+          Sandbox: { create: vi.fn(), get: vi.fn().mockResolvedValue(authorBacked) },
+        }) as never,
+    });
+    await authorBackend.create({
+      existingMetadata: {
+        authorSourceSnapshotId: "author-snapshot",
+        sandboxName: "author-backed",
+      },
+      reportResource,
+      runtimeContext: { appRoot: "/tmp/test-app-root" },
+      sessionKey: "author-key",
+      templateKey: null,
+    });
+
+    expect(reportResource.mock.calls.map(([resource]) => resource.type)).toEqual([
+      "sandbox",
+      "sandbox",
+    ]);
+  });
+
   it("creates fresh Vercel sandboxes with eve's shared base image", async () => {
     const templateSandbox = createMockSandbox({ name: "template-key" });
     const fetch = vi.fn();

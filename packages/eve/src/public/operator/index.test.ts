@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   ensureSandboxAccess: vi.fn(),
   getCompiledRuntimeAgentBundle: vi.fn(),
   getRun: vi.fn(),
+  getWorld: vi.fn(),
 }));
 
 vi.mock("#execution/sandbox/ensure.js", () => ({
@@ -12,10 +13,14 @@ vi.mock("#execution/sandbox/ensure.js", () => ({
 vi.mock("#runtime/sessions/compiled-agent-cache.js", () => ({
   getCompiledRuntimeAgentBundle: mocks.getCompiledRuntimeAgentBundle,
 }));
-vi.mock("#internal/workflow/runtime.js", () => ({ getRun: mocks.getRun }));
+vi.mock("#internal/workflow/runtime.js", () => ({
+  getRun: mocks.getRun,
+  getWorld: mocks.getWorld,
+}));
 
 import {
   cancelOperatorWorkflowRun,
+  getOperatorWorkflowRunAttributes,
   getOperatorWorkflowRunStatus,
   runOperatorSandboxCommand,
 } from "./index.js";
@@ -48,6 +53,18 @@ describe("operator workflow cancellation", () => {
 
     await expect(getOperatorWorkflowRunStatus("wrun_1")).resolves.toBe("cancelled");
     expect(mocks.getRun).toHaveBeenCalledWith("wrun_1");
+  });
+
+  it("reads a defensive copy of exact workflow run attributes", async () => {
+    const attributes = { "$eve.resource_tracking": "1", "$eve.sandbox_id": "sandbox-1" };
+    const get = vi.fn().mockResolvedValue({ attributes });
+    mocks.getWorld.mockResolvedValue({ runs: { get } });
+
+    const result = await getOperatorWorkflowRunAttributes("wrun_1");
+
+    expect(result).toEqual(attributes);
+    expect(result).not.toBe(attributes);
+    expect(get).toHaveBeenCalledWith("wrun_1", { resolveData: "none" });
   });
 });
 

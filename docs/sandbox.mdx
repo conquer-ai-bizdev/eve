@@ -305,6 +305,14 @@ Custom backend handles implement the same boundary in `delete()`: remove the ses
 
 Session sandboxes are keyed per durable session, not per deployment, so redeploying your app does not by itself discard them. A definition change to the authored sandbox source, workspace seed content, or `revalidationKey` replaces the sandbox on the next turn and runs `onSession` again.
 
+eve records the exact provider sandbox and session-owned persistence snapshot
+references as plaintext `$eve.*` attributes on the owning Workflow run. An
+authenticated operator integration can read them with
+`getOperatorWorkflowRunAttributes(runId)` from `eve/operator`. These references
+are observability metadata: reusable template snapshots and author-provided
+source snapshots are excluded, and an attribution-write failure does not change
+the sandbox lifecycle result.
+
 For sandboxes with `bootstrap`, unrelated agent changes preserve the template and session sandbox keys even when there are no skill or workspace seed files. You do not need to add a seed file or `revalidationKey` solely to preserve reuse across those changes.
 
 Reattachment still depends on the backend retaining its physical sandbox state. If a persisted Vercel sandbox is missing or its saved filesystem snapshot is no longer available, eve deletes the unusable record and creates a replacement from the current template when one is configured. Files and other changes made after the original sandbox was created are not restored automatically. Because the durable session still has the same sandbox key, `onSession` does not run again for this replacement. Persist important artifacts outside the sandbox, and do not rely on `onSession` as the only place that applies security-critical configuration.

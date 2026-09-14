@@ -352,6 +352,18 @@ describe("ensureSandboxAccess", () => {
     );
   });
 
+  it("supplies a provider-neutral resource reporter to the backend", async () => {
+    const backend = createBackend();
+    const registry = createTestRegistry({}, backend);
+
+    const access = await ensure({ registry });
+    await access.get();
+
+    expect(backend.create).toHaveBeenCalledWith(
+      expect.objectContaining({ reportResource: expect.any(Function) }),
+    );
+  });
+
   it("derives an inherited sandbox from the parent owner identity", async () => {
     const parentBackend = createBackend();
     const childBackend = createBackend();

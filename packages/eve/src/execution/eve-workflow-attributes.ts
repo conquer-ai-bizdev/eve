@@ -266,6 +266,7 @@ export function buildSessionAttributes(input: {
   const isOtelTraceEnabled = isWorkflowOtelTraceEnabled(input.serializedContext);
   return {
     "$eve.channel_request_id": readChannelRequestId(input.serializedContext),
+    "$eve.resource_tracking": "1",
     "$eve.schedule": readScheduleId(input.serializedContext),
     "$eve.is_otel_trace_enabled": isOtelTraceEnabled,
     "$eve.is_trace_content_visible": isTraceContentVisible,
@@ -295,6 +296,7 @@ export function buildSubagentRootAttributes(input: {
 }): Record<string, EveAttributeValue> {
   return {
     "$eve.channel_request_id": readChannelRequestId(input.serializedContext),
+    "$eve.resource_tracking": "1",
     "$eve.is_otel_trace_enabled": isWorkflowOtelTraceEnabled(input.serializedContext),
     "$eve.is_trace_content_visible": isWorkflowTraceContentVisible(input.serializedContext),
     "$eve.trace_id": readSessionTraceId(input.serializedContext),

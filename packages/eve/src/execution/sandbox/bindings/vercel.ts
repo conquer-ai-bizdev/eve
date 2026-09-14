@@ -167,9 +167,30 @@ export function createVercelSandbox(
         );
       }
 
+      await reportVercelResource(createInput.reportResource, {
+        id: session.sandbox.name,
+        provider: "vercel",
+        type: "sandbox",
+      });
+      const persistedSnapshotId = reportableVercelSnapshotId({
+        authorSourceSnapshotId: session.authorSourceSnapshotId,
+        created: session.created,
+        currentSnapshotId: session.sandbox.currentSnapshotId,
+        templateSnapshotId: template?.snapshotId,
+      });
+      if (persistedSnapshotId !== undefined) {
+        await reportVercelResource(createInput.reportResource, {
+          id: persistedSnapshotId,
+          provider: "vercel",
+          type: "snapshot",
+        });
+      }
+
       return createHandle({
+        authorSourceSnapshotId: session.authorSourceSnapshotId,
         createOptions,
         loadDeleteSandboxModule,
+        reportResource: createInput.reportResource,
         sandbox: session.sandbox,
         sessionKey: createInput.sessionKey,
       });
@@ -404,6 +425,7 @@ interface EnsureSessionInput {
 }
 
 interface VercelSandboxSessionCreateResult {
+  readonly authorSourceSnapshotId?: string;
   readonly created: boolean;
   readonly sandbox: VercelSandbox;
 }
@@ -442,7 +464,13 @@ async function ensureSession(input: EnsureSessionInput): Promise<VercelSandboxSe
 
   if (existing !== null) {
     await ensureVercelSandboxTags(existing, input.tags);
-    return { created: false, sandbox: existing };
+    return {
+      authorSourceSnapshotId:
+        readVercelAuthorSourceSnapshotId(input.existingMetadata) ??
+        (input.snapshotId === undefined ? extractAuthorSnapshotId(input.createOptions) : undefined),
+      created: false,
+      sandbox: existing,
+    };
   }
 
   const sessionCreateOptions = await input.resolveSessionCreateOptions?.({
@@ -454,6 +482,8 @@ async function ensureSession(input: EnsureSessionInput): Promise<VercelSandboxSe
   }
 
   return {
+    authorSourceSnapshotId:
+      input.snapshotId === undefined ? extractAuthorSnapshotId(createParams) : undefined,
     created: true,
     sandbox: await input.createSandbox({
       createOptions: createParams,
@@ -499,8 +529,10 @@ function createSessionCreateParams(
 }
 
 function createHandle(input: {
+  readonly authorSourceSnapshotId?: string;
   readonly createOptions: VercelCreateOptions;
   readonly loadDeleteSandboxModule: () => Promise<VercelDeleteModule>;
+  readonly reportResource: SandboxBackendCreateInput["reportResource"];
   readonly sandbox: VercelSandbox;
   readonly sessionKey: string;
 }): SandboxBackendHandle<VercelSandboxSessionUseOptions> {
@@ -522,7 +554,7 @@ function createHandle(input: {
     async captureState() {
       return {
         backendName: "vercel",
-        metadata: { sandboxName: sandbox.name },
+        metadata: vercelSessionMetadata(sandbox.name, input.authorSourceSnapshotId),
         sessionKey,
       };
     },
@@ -535,11 +567,13 @@ function createHandle(input: {
       });
     },
     async stop() {
-      await stopVercelSandbox(sandbox);
+      const stopped = await stopVercelSandbox(sandbox);
+      await reportStoppedVercelSnapshot(input.reportResource, stopped);
     },
     async shutdown() {
       try {
-        await stopVercelSandbox(sandbox);
+        const stopped = await stopVercelSandbox(sandbox);
+        await reportStoppedVercelSnapshot(input.reportResource, stopped);
       } catch {
         // Provider-side timeout is the backstop when the sandbox is unreachable.
       }
@@ -662,6 +696,78 @@ function extractAuthorSnapshotId(createOptions: VercelCreateOptions): string | u
     return source.snapshotId;
   }
   return undefined;
+}
+
+const AUTHOR_SOURCE_SNAPSHOT_ID_KEY = "authorSourceSnapshotId";
+
+function readVercelAuthorSourceSnapshotId(
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  const snapshotId = metadata?.[AUTHOR_SOURCE_SNAPSHOT_ID_KEY];
+  return typeof snapshotId === "string" && snapshotId.length > 0 ? snapshotId : undefined;
+}
+
+function vercelSessionMetadata(
+  sandboxName: string,
+  authorSourceSnapshotId: string | undefined,
+): Record<string, unknown> {
+  return {
+    sandboxName,
+    ...(authorSourceSnapshotId === undefined
+      ? {}
+      : { [AUTHOR_SOURCE_SNAPSHOT_ID_KEY]: authorSourceSnapshotId }),
+  };
+}
+
+function reportableVercelSnapshotId(input: {
+  readonly authorSourceSnapshotId?: string;
+  readonly created: boolean;
+  readonly currentSnapshotId?: string;
+  readonly templateSnapshotId?: string;
+}): string | undefined {
+  if (input.created) return undefined;
+  const snapshotId = input.currentSnapshotId;
+  if (typeof snapshotId !== "string" || snapshotId.length === 0) return undefined;
+  if (snapshotId === input.authorSourceSnapshotId || snapshotId === input.templateSnapshotId) {
+    return undefined;
+  }
+  return snapshotId;
+}
+
+async function reportStoppedVercelSnapshot(
+  reportResource: SandboxBackendCreateInput["reportResource"],
+  stopped: Awaited<ReturnType<VercelSandbox["stop"]>> | undefined,
+): Promise<void> {
+  const snapshotId = stopped?.snapshot?.id;
+  if (typeof snapshotId === "string" && snapshotId.length > 0) {
+    await reportVercelResource(reportResource, {
+      id: snapshotId,
+      provider: "vercel",
+      type: "snapshot",
+    });
+  }
+}
+
+let warnedAboutResourceReportFailure = false;
+
+async function reportVercelResource(
+  reportResource: SandboxBackendCreateInput["reportResource"],
+  resource: {
+    readonly id: string;
+    readonly provider: "vercel";
+    readonly type: "sandbox" | "snapshot";
+  },
+): Promise<void> {
+  try {
+    await reportResource?.(resource);
+  } catch (error) {
+    if (warnedAboutResourceReportFailure) return;
+    warnedAboutResourceReportFailure = true;
+    console.warn("[eve] failed to report Vercel sandbox resource attribution", {
+      error: error instanceof Error ? error.message : String(error),
+      resource,
+    });
+  }
 }
 
 function getVercelSandboxName(metadata: Record<string, unknown> | undefined): string | undefined {
