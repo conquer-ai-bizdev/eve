@@ -193,6 +193,35 @@ describe("OpenApiConnectionClient", () => {
     expect(resolver).toHaveBeenCalledWith(expect.objectContaining({ callId: "call-1" }));
   });
 
+  it("replaces an operation's model-facing input schema", async () => {
+    const inputSchema = {
+      additionalProperties: false,
+      properties: { id: { minLength: 3, type: "string" } },
+      required: ["id"],
+      type: "object",
+    } as const;
+    const client = new OpenApiConnectionClient(
+      makeConnection({ toolCall: { inputSchemas: { getProject: inputSchema } } }),
+    );
+
+    const metadata = await client.getToolMetadata();
+    expect(metadata.find((item) => item.name === "getProject")?.inputSchema).toEqual(inputSchema);
+  });
+
+  it("rejects an input schema override for an unavailable operation", async () => {
+    const client = new OpenApiConnectionClient(
+      makeConnection({
+        toolCall: {
+          inputSchemas: { missing: { properties: {}, type: "object" } },
+        },
+      }),
+    );
+
+    await expect(client.getToolMetadata()).rejects.toThrow(
+      /input schema for unavailable operation "missing"/,
+    );
+  });
+
   it("builds input schemas from Swagger 2.0 top-level parameters", async () => {
     const client = new OpenApiConnectionClient(makeConnection({ spec: SWAGGER_SPEC, url: "" }));
     const metadata = await client.getToolMetadata();

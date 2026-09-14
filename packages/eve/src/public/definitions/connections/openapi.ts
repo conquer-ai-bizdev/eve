@@ -103,9 +103,10 @@ export interface OpenAPIConnectionDefinition {
   /**
    * Per-call behavior for operations exposed by this OpenAPI connection.
    *
-   * Use `providedArguments` for application-owned operation parameters. eve
-   * removes configured keys from the model-facing input schema and adds their
-   * resolved values immediately before building the HTTP request.
+   * Use `providedArguments` for application-owned operation parameters and
+   * `inputSchemas` to narrow an operation's model-facing JSON schema. eve
+   * removes application-owned keys and adds their resolved values immediately
+   * before building the HTTP request.
    */
   toolCall?: ConnectionToolCallDefinition;
   /**

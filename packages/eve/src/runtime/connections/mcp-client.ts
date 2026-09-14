@@ -191,9 +191,22 @@ export class McpConnectionClient implements ConnectionClient {
     // `ToolSet` constraint only admits `Tool<any | never, any | never>`,
     // so a single-hop cast is required — the runtime shape is identical.
     const providedArgumentNames = Object.keys(this.#connection.toolCall?.providedArguments ?? {});
+    const inputSchemas = this.#connection.toolCall?.inputSchemas ?? {};
+    const availableToolNames = new Set(filteredTools.map((tool) => tool.name));
+    const unknownSchemaTool = Object.keys(inputSchemas).find(
+      (toolName) => !availableToolNames.has(toolName),
+    );
+    if (unknownSchemaTool !== undefined) {
+      throw new Error(
+        `Connection "${this.#connection.connectionName}" configures an input schema for unavailable tool "${unknownSchemaTool}".`,
+      );
+    }
     const projectedTools = filteredTools.map((tool) => ({
       ...tool,
-      inputSchema: omitProvidedArgumentsFromSchema(tool.inputSchema, providedArgumentNames),
+      inputSchema: omitProvidedArgumentsFromSchema(
+        inputSchemas[tool.name] ?? tool.inputSchema,
+        providedArgumentNames,
+      ),
     }));
 
     const tools = client.toolsFromDefinitions({ tools: projectedTools }) as ToolSet;

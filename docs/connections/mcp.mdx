@@ -66,6 +66,51 @@ idempotency key.
 
 eve treats configured keys as application-owned: it removes them from every remote tool's model-facing input schema and adds their resolved values immediately before execution. A resolved `undefined` deletes the key instead. Configured keys apply to every tool call on the connection and replace any conflicting model value. Approval policies continue to receive only the model-authored input.
 
+## Narrow a remote tool's input schema
+
+Use `toolCall.inputSchemas` when the native MCP implementation is correct but
+its published schema is broader than one connection should expose. Keys are
+bare remote tool names. The replacement remains a model-facing JSON Schema;
+eve sends the validated model arguments to the same native MCP tool without
+transforming them.
+
+```ts title="agent/connections/catalog.ts"
+export default defineMcpClientConnection({
+  url: "https://mcp.example.com/mcp",
+  description: "Catalog lookup by exact domain.",
+  tools: { allow: ["list-records"] },
+  toolCall: {
+    inputSchemas: {
+      "list-records": {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          filter: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              domains: {
+                type: "object",
+                additionalProperties: false,
+                properties: { $eq: { type: "string", minLength: 1 } },
+                required: ["$eq"],
+              },
+            },
+            required: ["domains"],
+          },
+        },
+        required: ["filter"],
+      },
+    },
+    providedArguments: { object: "companies", limit: 50 },
+  },
+});
+```
+
+An override for a tool hidden by the connection filter or absent from the MCP
+server fails during tool discovery. Application-provided arguments are still
+removed from an override and added immediately before execution.
+
 ## No auth
 
 Omit `auth` and `headers` only for an intentionally public or loopback MCP server. See [No auth](../connections#no-auth) for the shared connection behavior and security boundary.

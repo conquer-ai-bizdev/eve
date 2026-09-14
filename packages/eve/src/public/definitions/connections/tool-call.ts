@@ -1,5 +1,5 @@
 import type { SessionContext } from "#public/definitions/callback-context.js";
-import type { JsonValue } from "#public/types/json.js";
+import type { JsonObject, JsonValue } from "#public/types/json.js";
 
 /** Context available while resolving an application-provided connection tool argument. */
 export type ProvidedArgumentContext = SessionContext & {
@@ -25,8 +25,13 @@ export type ProvidedArgumentValue =
  */
 export type ProvidedArgumentsDefinition = Readonly<Record<string, ProvidedArgumentValue>>;
 
+/** Model-facing JSON input schemas keyed by bare remote tool or operation name. */
+export type ConnectionToolInputSchemasDefinition = Readonly<Record<string, JsonObject>>;
+
 /** Per-call behavior shared by tools exposed through a connection. */
 export interface ConnectionToolCallDefinition {
   /** Application-owned arguments hidden from the model and added at execution time. */
   readonly providedArguments?: ProvidedArgumentsDefinition;
+  /** Optional model-facing input schemas that replace schemas published by the remote service. */
+  readonly inputSchemas?: ConnectionToolInputSchemasDefinition;
 }

@@ -206,6 +206,62 @@ describe("McpConnectionClient", () => {
     expect(execute).toHaveBeenCalledWith({ query: "boots" }, expect.any(Object));
   });
 
+  it("replaces a native MCP tool's model-facing input schema", async () => {
+    const execute = vi.fn().mockResolvedValue({ ok: true });
+    const toolsFromDefinitions = vi.fn().mockReturnValue({ lookup: { execute } });
+    createMCPClient.mockResolvedValue({
+      close: vi.fn(),
+      listTools: vi.fn().mockResolvedValue({
+        tools: [
+          {
+            inputSchema: {
+              additionalProperties: true,
+              properties: { filter: { type: "object" }, sort: { type: "string" } },
+              type: "object",
+            },
+            name: "lookup",
+          },
+        ],
+      }),
+      toolsFromDefinitions,
+    });
+    const inputSchema = {
+      additionalProperties: false,
+      properties: { filter: { type: "string" } },
+      required: ["filter"],
+      type: "object",
+    } as const;
+    const mcpClient = new McpConnectionClient(
+      makeConnection({ toolCall: { inputSchemas: { lookup: inputSchema } } }),
+    );
+
+    await expect(mcpClient.getToolMetadata()).resolves.toEqual([
+      expect.objectContaining({ inputSchema, name: "lookup" }),
+    ]);
+    expect(toolsFromDefinitions).toHaveBeenCalledWith({
+      tools: [expect.objectContaining({ inputSchema, name: "lookup" })],
+    });
+  });
+
+  it("rejects an input schema override for an unavailable MCP tool", async () => {
+    createMCPClient.mockResolvedValue({
+      close: vi.fn(),
+      listTools: vi.fn().mockResolvedValue({ tools: [{ inputSchema: {}, name: "lookup" }] }),
+      toolsFromDefinitions: vi.fn(),
+    });
+    const mcpClient = new McpConnectionClient(
+      makeConnection({
+        toolCall: {
+          inputSchemas: { missing: { properties: {}, type: "object" } },
+        },
+      }),
+    );
+
+    await expect(mcpClient.getToolMetadata()).rejects.toThrow(
+      /input schema for unavailable tool "missing"/,
+    );
+  });
+
   it("creates an HTTP MCP client with resolved connection headers", async () => {
     const client = {
       close: vi.fn(),

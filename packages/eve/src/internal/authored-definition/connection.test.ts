@@ -470,6 +470,30 @@ describe("normalizeMcpClientConnectionDefinition", () => {
   });
 
   describe("toolCall.providedArguments validation", () => {
+    it("accepts JSON input schemas", () => {
+      const schema = {
+        additionalProperties: false,
+        properties: { query: { minLength: 1, type: "string" } },
+        required: ["query"],
+        type: "object",
+      };
+      const result = normalizeMcpClientConnectionDefinition(
+        validInput({ toolCall: { inputSchemas: { lookup: schema } } }),
+        MSG,
+      );
+
+      expect(result.toolCall?.inputSchemas).toEqual({ lookup: schema });
+    });
+
+    it("rejects non-JSON input schemas", () => {
+      expect(() =>
+        normalizeMcpClientConnectionDefinition(
+          validInput({ toolCall: { inputSchemas: { lookup: new Date() } } }),
+          MSG,
+        ),
+      ).toThrow(/toolCall\.inputSchemas\.lookup.*JSON-serializable object/);
+    });
+
     it("accepts static, omitted, Promise, and function values", () => {
       const resolver = () => ({ profile: "https://agent.example.com/profile" });
       const promised = Promise.resolve("request-id");

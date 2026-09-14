@@ -2,6 +2,7 @@ import { normalizeApproval } from "#internal/authored-definition/approval.js";
 import type { McpClientConnectionDefinition } from "#public/definitions/connections/mcp.js";
 import type { OpenAPIConnectionDefinition } from "#public/definitions/connections/openapi.js";
 import type {
+  ConnectionToolInputSchemasDefinition,
   ConnectionToolCallDefinition,
   ProvidedArgumentsDefinition,
 } from "#public/definitions/connections/tool-call.js";
@@ -12,7 +13,7 @@ import type {
 } from "#shared/connection-types.js";
 import { normalizeAuthorizationSpec } from "#shared/validate-authorization.js";
 import { expectObjectRecord, expectOnlyKnownKeys } from "#internal/authored-module.js";
-import { parseJsonValue } from "#shared/json.js";
+import { parseJsonObject, parseJsonValue } from "#shared/json.js";
 
 const KNOWN_TOP_LEVEL_KEYS = [
   "approval",
@@ -52,7 +53,7 @@ const KNOWN_AUTHORIZATION_KEYS = [
   // canonical producer.
   "vercelConnect",
 ] as const;
-const KNOWN_TOOL_CALL_KEYS = ["providedArguments"] as const;
+const KNOWN_TOOL_CALL_KEYS = ["inputSchemas", "providedArguments"] as const;
 
 /**
  * Validates one authored MCP client connection module export at build time
@@ -131,8 +132,31 @@ function normalizeConnectionToolCall(
   );
   expectOnlyKnownKeys(toolCall, KNOWN_TOOL_CALL_KEYS, `${message} The "toolCall" field`);
 
-  if (toolCall.providedArguments === undefined) {
+  if (toolCall.providedArguments === undefined && toolCall.inputSchemas === undefined) {
     return {};
+  }
+
+  let inputSchemas: ConnectionToolInputSchemasDefinition | undefined;
+  if (toolCall.inputSchemas !== undefined) {
+    const schemas = expectObjectRecord(
+      toolCall.inputSchemas,
+      `${message} The "toolCall.inputSchemas" field must be a plain object.`,
+    );
+    inputSchemas = Object.fromEntries(
+      Object.entries(schemas).map(([toolName, schema]) => {
+        try {
+          return [toolName, parseJsonObject(schema)];
+        } catch {
+          throw new Error(
+            `${message} The "toolCall.inputSchemas.${toolName}" value must be a JSON-serializable object.`,
+          );
+        }
+      }),
+    );
+  }
+
+  if (toolCall.providedArguments === undefined) {
+    return { inputSchemas };
   }
 
   const providedArguments = expectObjectRecord(
@@ -160,7 +184,10 @@ function normalizeConnectionToolCall(
     }
   }
 
-  return { providedArguments: providedArguments as ProvidedArgumentsDefinition };
+  return {
+    inputSchemas,
+    providedArguments: providedArguments as ProvidedArgumentsDefinition,
+  };
 }
 
 /**

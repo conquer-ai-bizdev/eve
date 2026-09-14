@@ -163,10 +163,20 @@ export class OpenApiConnectionClient implements ConnectionClient {
     const operationMap = new Map<string, OpenApiOperation>();
     const tools: ToolSet = {};
     const providedArgumentNames = Object.keys(this.#connection.toolCall?.providedArguments ?? {});
+    const inputSchemas = this.#connection.toolCall?.inputSchemas ?? {};
+    const availableToolNames = new Set(selected.map((operation) => operation.toolName));
+    const unknownSchemaTool = Object.keys(inputSchemas).find(
+      (toolName) => !availableToolNames.has(toolName),
+    );
+    if (unknownSchemaTool !== undefined) {
+      throw new Error(
+        `Connection "${this.#connection.connectionName}" configures an input schema for unavailable operation "${unknownSchemaTool}".`,
+      );
+    }
 
     for (const operation of selected) {
       const projectedInputSchema = omitProvidedArgumentsFromSchema(
-        operation.inputSchema,
+        inputSchemas[operation.toolName] ?? operation.inputSchema,
         providedArgumentNames,
       );
       let inputSchema: ToolSchema;
