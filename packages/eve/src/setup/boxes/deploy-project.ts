@@ -184,6 +184,7 @@ export function deployProject(
         deps.runVercel(deployArgs, {
           cwd: projectPath,
           extraEnv: VERCEL_DEPLOY_ENV,
+          maxTransientRetries: 2,
           nonInteractive: input.headless,
           onOutput,
           signal,

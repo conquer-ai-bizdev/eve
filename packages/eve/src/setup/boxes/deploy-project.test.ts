@@ -113,7 +113,11 @@ describe("deployProject box", () => {
     expect(deps.runVercel).toHaveBeenNthCalledWith(
       1,
       ["deploy", "--prod", "--yes", "--non-interactive"],
-      expect.objectContaining({ cwd: "/tmp/project", nonInteractive: true }),
+      expect.objectContaining({
+        cwd: "/tmp/project",
+        maxTransientRetries: 2,
+        nonInteractive: true,
+      }),
     );
   });
 
@@ -129,7 +133,11 @@ describe("deployProject box", () => {
     expect(deps.runVercel).toHaveBeenNthCalledWith(
       1,
       ["deploy", "--prod", "--yes"],
-      expect.objectContaining({ cwd: "/tmp/project", nonInteractive: false }),
+      expect.objectContaining({
+        cwd: "/tmp/project",
+        maxTransientRetries: 2,
+        nonInteractive: false,
+      }),
     );
   });
 

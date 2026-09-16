@@ -129,6 +129,51 @@ describe("runVercel", () => {
     ]);
   });
 
+  test("retries a transient transport failure and preserves streamed output", async () => {
+    const first = createChildProcess();
+    const second = createChildProcess();
+    mockedSpawn.mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const onOutput = vi.fn();
+
+    const result = runVercel(["deploy", "--prod"], {
+      cwd: "/tmp/eve-agent",
+      maxTransientRetries: 2,
+      onOutput,
+    });
+    first.stderr.emit("data", Buffer.from("Error: fetch failed\n"));
+    first.emit("close", 1);
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    second.stdout.emit("data", Buffer.from("Production deployment ready\n"));
+    second.emit("close", 0);
+
+    await expect(result).resolves.toBe(true);
+    expect(mockedSpawn).toHaveBeenCalledTimes(2);
+    expect(onOutput.mock.calls.map(([line]) => line)).toContainEqual({
+      stream: "stderr",
+      text: "Transient Vercel transport failure; retrying (1/2)...",
+    });
+    expect(onOutput.mock.calls.map(([line]) => line)).toContainEqual({
+      stream: "stdout",
+      text: "Production deployment ready",
+    });
+  });
+
+  test("does not retry a non-transport deployment failure", async () => {
+    const child = createChildProcess();
+    mockSpawnReturn(child);
+
+    const result = runVercel(["deploy", "--prod"], {
+      cwd: "/tmp/eve-agent",
+      maxTransientRetries: 2,
+      onOutput: vi.fn(),
+    });
+    child.stderr.emit("data", Buffer.from("Error: build command exited with code 1\n"));
+    child.emit("close", 1);
+
+    await expect(result).resolves.toBe(false);
+    expect(mockedSpawn).toHaveBeenCalledTimes(1);
+  });
+
   test("passes the CLI flag and closes stdin in non-interactive mode", async () => {
     const child = createChildProcess();
     mockSpawnReturn(child);

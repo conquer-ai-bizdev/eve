@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { withoutCodingAgentMarkers } from "./coding-agent-env.js";
 import { createProcessOutputBuffer, type ProcessOutputHandler } from "./process-output.js";
@@ -63,6 +64,8 @@ export interface RunVercelOptions {
    * on external action, e.g. a Connect create parked on a browser OAuth.
    */
   timeoutMs?: number;
+  /** Retry non-zero exits whose output identifies a transient transport failure. */
+  maxTransientRetries?: number;
 }
 
 const KILL_GRACE_MS = 5_000;
@@ -209,6 +212,8 @@ interface VercelRunSpec<T> {
    * the renderer instead and neither stream is kept in memory.
    */
   capture: boolean;
+  /** Stream output even while retaining it for failure classification. */
+  streamCapturedOutput?: boolean;
   /** Write diagnostics to `process.stderr` when no renderer is attached. */
   reportWithoutRenderer: boolean;
   result(outcome: VercelRunOutcome): T;
@@ -258,7 +263,7 @@ function runVercelProcess<T>(
     const stderrChunks: string[] = [];
     child.stdout?.on("data", (chunk: Buffer) => {
       if (spec.capture) stdoutChunks.push(chunk.toString("utf8"));
-      else outputBuffer?.write("stdout", chunk);
+      if (!spec.capture || spec.streamCapturedOutput) outputBuffer?.write("stdout", chunk);
     });
     child.stderr?.on("data", (chunk: Buffer) => {
       if (spec.capture) stderrChunks.push(chunk.toString("utf8"));
@@ -329,6 +334,29 @@ function runVercelProcess<T>(
   });
 }
 
+const TRANSIENT_VERCEL_FAILURE =
+  /(?:fetch failed|failed to fetch|socket hang up|\b(?:ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|ENOTFOUND|EPIPE|ETIMEDOUT|UND_ERR_(?:BODY|CONNECT|HEADERS)_TIMEOUT|UND_ERR_SOCKET)\b)/i;
+
+function isTransientVercelFailure(outcome: VercelRunOutcome): boolean {
+  if (outcome.ok) return false;
+  return TRANSIENT_VERCEL_FAILURE.test(
+    [outcome.stdout, outcome.stderr, outcome.message, outcome.errno].filter(Boolean).join("\n"),
+  );
+}
+
+function reportTransientRetry(
+  options: RunVercelOptions,
+  retry: number,
+  maxTransientRetries: number,
+): void {
+  const message = `Transient Vercel transport failure; retrying (${retry}/${maxTransientRetries})...`;
+  if (options.onOutput !== undefined) {
+    options.onOutput({ stream: "stderr", text: message });
+  } else {
+    process.stderr.write(`\n${message}\n`);
+  }
+}
+
 /**
  * Runs a Vercel CLI command with the Connect feature flag enabled.
  *
@@ -336,12 +364,41 @@ function runVercelProcess<T>(
  * so an interactive parent can keep terminal rendering coherent.
  */
 export async function runVercel(args: string[], options: RunVercelOptions): Promise<boolean> {
-  return runVercelProcess(args, options, {
-    stdio: stdioForRun(options),
-    capture: false,
-    reportWithoutRenderer: true,
-    result: (outcome) => outcome.ok,
-  });
+  const maxTransientRetries = Math.max(0, Math.floor(options.maxTransientRetries ?? 0));
+  if (maxTransientRetries === 0) {
+    return runVercelProcess(args, options, {
+      stdio: stdioForRun(options),
+      capture: false,
+      reportWithoutRenderer: true,
+      result: (outcome) => outcome.ok,
+    });
+  }
+
+  for (let attempt = 0; ; attempt += 1) {
+    const outcome = await runVercelProcess(args, options, {
+      stdio: stdioForRun(options),
+      capture: true,
+      streamCapturedOutput: true,
+      reportWithoutRenderer: true,
+      result: (result) => result,
+    });
+    if (outcome.ok) return true;
+    if (
+      attempt >= maxTransientRetries ||
+      options.signal?.aborted === true ||
+      !isTransientVercelFailure(outcome)
+    ) {
+      return false;
+    }
+
+    const retry = attempt + 1;
+    reportTransientRetry(options, retry, maxTransientRetries);
+    try {
+      await delay(1_000 * retry, undefined, { signal: options.signal });
+    } catch {
+      return false;
+    }
+  }
 }
 
 /** Exit success plus captured stdout from an interactive Vercel CLI run. */
