@@ -16,11 +16,11 @@ export async function deliverTaskUpdate(input: {
     isSubagentAdapterState(state) &&
     state.taskId !== undefined
   ) {
-    await forwardLocalTaskUpdateStep({
+    const delivery = await forwardLocalTaskUpdateStep({
       parentContinuationToken: state.parentContinuationToken,
       update: input.update,
     });
-    return state.taskId;
+    return delivery === "delivered" ? state.taskId : undefined;
   }
   return await fireTaskUpdateCallbackStep({
     callback: input.callback,

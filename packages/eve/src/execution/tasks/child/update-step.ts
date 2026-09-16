@@ -1,3 +1,4 @@
+import { isTaskWorkflowTargetGone } from "#execution/tasks/workflow-target.js";
 import { resumeHook } from "#internal/workflow/runtime.js";
 import type { TaskInboundUpdate } from "#tasks/types.js";
 
@@ -5,8 +6,14 @@ import type { TaskInboundUpdate } from "#tasks/types.js";
 export async function forwardLocalTaskUpdateStep(input: {
   readonly parentContinuationToken: string;
   readonly update: TaskInboundUpdate;
-}): Promise<void> {
+}): Promise<"delivered" | "unreachable"> {
   "use step";
 
-  await resumeHook(input.parentContinuationToken, input.update);
+  try {
+    await resumeHook(input.parentContinuationToken, input.update);
+    return "delivered";
+  } catch (error) {
+    if (isTaskWorkflowTargetGone(error)) return "unreachable";
+    throw error;
+  }
 }
