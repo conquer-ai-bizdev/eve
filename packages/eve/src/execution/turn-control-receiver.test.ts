@@ -231,6 +231,31 @@ describe("TurnControlReceiver", () => {
     });
   });
 
+  it("suppresses one task's notifications without cancelling the active turn", async () => {
+    installControlHook([parkResult()], true);
+    const bufferedDeliveries: DeliverHookPayload[] = [];
+
+    await runReceiver(bufferedDeliveries, {
+      commandInbox: createCommandInbox([
+        {
+          kind: "send",
+          payload: { message: "late progress" },
+          taskDeliveryId: "task-1:update:1",
+        },
+        { kind: "cancel", taskId: "task-1" },
+        {
+          kind: "send",
+          payload: { message: "late completion" },
+          taskDeliveryId: "task-1:ready:completed",
+        },
+      ]),
+      seenTaskDeliveries: new Set(),
+    });
+
+    expect(bufferedDeliveries).toEqual([]);
+    expect(forwardTurnCancellationStep).not.toHaveBeenCalled();
+  });
+
   it("drops an unknown wire version loudly and keeps consuming the inbox", async () => {
     installControlHook([parkResult()], true);
     const bufferedDeliveries: DeliverHookPayload[] = [];

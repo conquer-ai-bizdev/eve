@@ -28,6 +28,7 @@ export async function cancelClientSession(input: {
   readonly context: SessionControlContext;
   readonly options?: {
     readonly signal?: AbortSignal;
+    readonly taskId?: string;
     readonly tasks?: boolean;
     readonly turnId?: string;
   };

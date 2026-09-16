@@ -112,6 +112,9 @@ export class TurnControlReceiver {
         });
       }
       if (command.taskId !== undefined) this.discardTaskDeliveries(command.taskId);
+      if (command.taskId !== undefined && command.turnId === undefined && command.tasks !== true) {
+        return undefined;
+      }
       const turnId =
         command.taskId !== undefined &&
         command.turnId !== undefined &&

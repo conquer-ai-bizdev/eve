@@ -140,9 +140,14 @@ export class ClientSession {
     );
   }
 
-  /** Requests cooperative cancellation of this session's active turn and optionally its tasks. */
+  /**
+   * Requests cooperative cancellation of this session's active turn and optionally its tasks.
+   * A taskId without a turnId suppresses queued and future notifications from that task without
+   * cancelling the active turn.
+   */
   async cancel(options?: {
     readonly signal?: AbortSignal;
+    readonly taskId?: string;
     readonly tasks?: boolean;
     readonly turnId?: string;
   }): Promise<CancelSessionResult> {

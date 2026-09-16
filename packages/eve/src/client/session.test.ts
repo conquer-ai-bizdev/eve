@@ -139,7 +139,7 @@ describe("ClientSession", () => {
     expect(requests[1]!.headers.get("authorization")).toBe("Bearer token-2");
   });
 
-  it("sends tasks in the cancel body and uses signal only for fetch", async () => {
+  it("sends task controls in the cancel body and uses signal only for fetch", async () => {
     const controller = new AbortController();
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -149,13 +149,22 @@ describe("ClientSession", () => {
     const session = createSession();
 
     await expect(
-      session.cancel({ signal: controller.signal, tasks: true, turnId: "turn_1" }),
+      session.cancel({
+        signal: controller.signal,
+        taskId: "task_1",
+        tasks: true,
+        turnId: "turn_1",
+      }),
     ).resolves.toEqual({ sessionId: "session_1", status: "accepted" });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const init = fetchMock.mock.calls[0]?.[1];
     expect(init?.signal).toBe(controller.signal);
-    expect(JSON.parse(String(init?.body))).toEqual({ tasks: true, turnId: "turn_1" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      taskId: "task_1",
+      tasks: true,
+      turnId: "turn_1",
+    });
   });
 
   it("snapshots the session from the start through one pinned durable tail", async () => {
