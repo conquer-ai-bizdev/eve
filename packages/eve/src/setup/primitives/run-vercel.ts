@@ -337,7 +337,8 @@ function runVercelProcess<T>(
 const TRANSIENT_VERCEL_FAILURE =
   /(?:fetch failed|failed to fetch|socket hang up|\b(?:ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|ENOTFOUND|EPIPE|ETIMEDOUT|UND_ERR_(?:BODY|CONNECT|HEADERS)_TIMEOUT|UND_ERR_SOCKET)\b)/i;
 
-const ACCEPTED_VERCEL_DEPLOYMENT = /(?:^|\n)\s*Inspect:\s+https:\/\/vercel\.com\/\S+/im;
+const ACCEPTED_VERCEL_DEPLOYMENT =
+  /(?:^|\n)\s*(?:│\s*)?Inspect(?:\s*:\s*|\s+)https:\/\/vercel\.com\/\S+/im;
 
 function isTransientVercelFailure(outcome: VercelRunOutcome): boolean {
   if (outcome.ok) return false;

@@ -182,6 +182,32 @@ describe("runVercel", () => {
     });
   });
 
+  test("recognizes the current Vercel rail-formatted acceptance line", async () => {
+    const child = createChildProcess();
+    mockSpawnReturn(child);
+    const onOutput = vi.fn();
+
+    const result = runVercel(["deploy", "--prod"], {
+      cwd: "/tmp/eve-agent",
+      maxTransientRetries: 2,
+      onOutput,
+    });
+    child.stderr.emit(
+      "data",
+      Buffer.from(
+        "│    Inspect         https://vercel.com/acme/eve-agent/AbCdEf123\nError: fetch failed\n",
+      ),
+    );
+    child.emit("close", 1);
+
+    await expect(result).resolves.toBe(false);
+    expect(mockedSpawn).toHaveBeenCalledTimes(1);
+    expect(onOutput.mock.calls.map(([line]) => line)).not.toContainEqual({
+      stream: "stderr",
+      text: "Transient Vercel transport failure; retrying (1/2)...",
+    });
+  });
+
   test("does not retry a non-transport deployment failure", async () => {
     const child = createChildProcess();
     mockSpawnReturn(child);
