@@ -337,11 +337,18 @@ function runVercelProcess<T>(
 const TRANSIENT_VERCEL_FAILURE =
   /(?:fetch failed|failed to fetch|socket hang up|\b(?:ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|ENOTFOUND|EPIPE|ETIMEDOUT|UND_ERR_(?:BODY|CONNECT|HEADERS)_TIMEOUT|UND_ERR_SOCKET)\b)/i;
 
+const ACCEPTED_VERCEL_DEPLOYMENT = /(?:^|\n)\s*Inspect:\s+https:\/\/vercel\.com\/\S+/im;
+
 function isTransientVercelFailure(outcome: VercelRunOutcome): boolean {
   if (outcome.ok) return false;
   return TRANSIENT_VERCEL_FAILURE.test(
     [outcome.stdout, outcome.stderr, outcome.message, outcome.errno].filter(Boolean).join("\n"),
   );
+}
+
+function hasAcceptedVercelDeployment(args: string[], outcome: VercelRunOutcome): boolean {
+  if (args[0] !== "deploy") return false;
+  return ACCEPTED_VERCEL_DEPLOYMENT.test([outcome.stdout, outcome.stderr].join("\n"));
 }
 
 function reportTransientRetry(
@@ -386,6 +393,7 @@ export async function runVercel(args: string[], options: RunVercelOptions): Prom
     if (
       attempt >= maxTransientRetries ||
       options.signal?.aborted === true ||
+      hasAcceptedVercelDeployment(args, outcome) ||
       !isTransientVercelFailure(outcome)
     ) {
       return false;
