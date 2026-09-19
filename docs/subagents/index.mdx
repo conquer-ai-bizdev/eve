@@ -56,7 +56,13 @@ export default defineAgent({
 });
 ```
 
-`description` is required. The parent reads it to decide whether to delegate, so the compiler rejects any subagent whose `agent.ts` leaves it out. Every declared local or remote subagent runs as a durable background task: the call returns `{ status: "working", taskId, agentId }` immediately, then task notifications wake the parent with updates, completion, failure, or cancellation. Human input requests surface separately on the parent session.
+`description` is required. The parent reads it to decide whether to delegate, so the compiler rejects any subagent whose `agent.ts` leaves it out. Declared subagents run as durable background tasks by default: the call returns `{ status: "working", taskId, agentId }` immediately, then task notifications wake the parent with updates, completion, failure, or cancellation. Human input requests surface separately on the parent session.
+
+For a local specialist whose result is required before its parent can continue,
+set `subagentExecution: "blocking"` in the child's `agent.ts`. The parent tool
+call then waits durably for the child's result and returns that result directly.
+Omit the field, or set it to `"background"`, for task-receipt and notification
+behavior. Remote subagents run as background tasks.
 
 A child running as a background task receives the framework `task_update` tool. It uses `task_update` to report progress to its parent. `task_cancel` is available to sessions that own background tasks, including a child that starts nested background work.
 

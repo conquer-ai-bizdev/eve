@@ -37,7 +37,7 @@ type PreparedRuntimeDelegationToolBase<TKind extends "remote" | "subagent"> = Re
     SourceRef &
     Node & {
       behavior: PreparedToolBehavior;
-      execution: "background";
+      execution?: "background";
       kind: TKind;
       rootOnly?: boolean;
       task: PreparedRuntimeWorkflowTask;

@@ -624,6 +624,7 @@ const compiledAgentConfigBaseFields = {
     .enum(["provider-default", "none", "minimal", "low", "medium", "high", "xhigh"])
     .optional(),
   source: moduleSourceRefSchema,
+  subagentExecution: z.enum(["background", "blocking"]).optional(),
   limits: compiledAgentLimitsDefinitionSchema.optional(),
 };
 
@@ -1225,6 +1226,7 @@ function cloneCompiledAgentDefinition(config: CompiledAgentDefinition): Compiled
     name: config.name,
     outputSchema: config.outputSchema,
     reasoning: config.reasoning,
+    subagentExecution: config.subagentExecution,
     limits:
       config.limits === undefined
         ? undefined

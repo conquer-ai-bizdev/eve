@@ -61,6 +61,7 @@ export function normalizeAgentDefinition(
       "modelOptions",
       "outputSchema",
       "reasoning",
+      "subagentExecution",
     ],
     message,
   );
@@ -118,6 +119,16 @@ export function normalizeAgentDefinition(
 
   if (record.reasoning !== undefined) {
     definition.reasoning = normalizeAgentReasoningDefinition(record.reasoning, message);
+  }
+
+  if (record.subagentExecution !== undefined) {
+    const execution = expectString(record.subagentExecution, message);
+    if (execution !== "background" && execution !== "blocking") {
+      throw new Error(
+        `${message} Expected "subagentExecution" to be one of: background, blocking.`,
+      );
+    }
+    definition.subagentExecution = execution;
   }
 
   if (record.limits !== undefined) {

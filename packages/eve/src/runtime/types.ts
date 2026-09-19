@@ -283,6 +283,7 @@ export interface ResolvedChannelDefinition extends ResolvedModuleSourceRef {
 export type ResolvedRuntimeSubagentNode = Readonly<
   ModuleSourceRef &
     Node & {
+      execution?: "background" | "blocking";
       kind: "subagent";
       name: string;
     } & (

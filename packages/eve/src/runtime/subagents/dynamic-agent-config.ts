@@ -46,6 +46,9 @@ export async function normalizeDynamicSubagentAgentConfig(input: {
   if (definition.experimental !== undefined) {
     throw new Error(`${message} The "experimental" field cannot be selected at runtime.`);
   }
+  if (definition.subagentExecution !== undefined) {
+    throw new Error(`${message} The "subagentExecution" field cannot be selected at runtime.`);
+  }
   if (isDynamicModelDefinition(definition.model)) {
     throw new Error(`${message} The returned "model" must be static.`);
   }

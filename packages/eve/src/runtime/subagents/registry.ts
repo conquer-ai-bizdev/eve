@@ -124,6 +124,7 @@ export function createPreparedRuntimeSubagentTool(
   if (definition.description === undefined) {
     throw new Error(`Static subagent "${definition.name}" is missing a description.`);
   }
+  const background = definition.kind === "remote" || definition.execution !== "blocking";
   return {
     behavior: {
       availability: [],
@@ -143,14 +144,16 @@ export function createPreparedRuntimeSubagentTool(
               },
       },
     },
-    description: `${definition.description}\n\nThis call starts a background task and returns a task receipt immediately.`,
-    execution: "background",
+    description: background
+      ? `${definition.description}\n\nThis call starts a background task and returns a task receipt immediately.`
+      : `${definition.description}\n\nThis call waits for the subagent's result before returning.`,
+    execution: background ? "background" : undefined,
     inputSchema,
     kind: definition.kind,
     logicalPath: definition.logicalPath,
     name: definition.name,
     nodeId: definition.nodeId,
-    outputSchema: SUBAGENT_TOOL_OUTPUT_JSON_SCHEMA,
+    outputSchema: background ? SUBAGENT_TOOL_OUTPUT_JSON_SCHEMA : undefined,
     sourceId: definition.sourceId,
     task: {
       nodeId: definition.nodeId,

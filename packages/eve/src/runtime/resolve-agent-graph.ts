@@ -253,6 +253,10 @@ async function resolveRuntimeSubagent(input: {
         };
   const resolvedSubagent: ResolvedRuntimeSubagentNode = {
     ...variant,
+    execution:
+      input.sourceRef.configResolver === undefined
+        ? (input.sourceRef.agent.config.subagentExecution ?? "background")
+        : "background",
     kind: "subagent",
     logicalPath: input.sourceRef.logicalPath,
     name: input.sourceRef.name,

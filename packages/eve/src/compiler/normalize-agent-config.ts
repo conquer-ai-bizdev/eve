@@ -89,6 +89,7 @@ export async function compileAgentConfig(
     outputSchema?: JsonObject;
     reasoning?: CompiledAgentDefinition["reasoning"];
     source: ModuleSourceRef;
+    subagentExecution?: CompiledAgentDefinition["subagentExecution"];
     limits?: CompiledAgentDefinition["limits"];
   } = {
     compaction,
@@ -135,6 +136,10 @@ export async function compileAgentConfig(
 
   if (definition.reasoning !== undefined) {
     compiledConfig.reasoning = definition.reasoning;
+  }
+
+  if (definition.subagentExecution !== undefined) {
+    compiledConfig.subagentExecution = definition.subagentExecution;
   }
 
   if (definition.limits !== undefined) {

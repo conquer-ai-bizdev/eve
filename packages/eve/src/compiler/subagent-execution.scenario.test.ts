@@ -33,6 +33,27 @@ describe("subagent compilation", () => {
     );
   });
 
+  it("compiles an opt-in blocking local subagent", async () => {
+    const app = await scenarioApp({
+      files: {
+        "agent/agent.ts":
+          "export default { model: 'openai/gpt-5.5', modelContextWindowTokens: 200000 };\n",
+        "agent/subagents/researcher/agent.ts":
+          "export default { description: 'Research.', model: 'openai/gpt-5.5', modelContextWindowTokens: 200000, subagentExecution: 'blocking' };\n",
+      },
+      name: "subagent-blocking-execution",
+    });
+    const discovered = await discoverAgent({
+      agentRoot: join(app.appRoot, "agent"),
+      appRoot: app.appRoot,
+    });
+    const manifest = await compileAgentManifest(discovered.manifest);
+    const child = manifest.subagents[0];
+
+    if (child?.configResolver !== undefined) throw new Error("Expected a static child.");
+    expect(child?.agent.config.subagentExecution).toBe("blocking");
+  });
+
   it("compiles a subagent without root configuration", async () => {
     const app = await scenarioApp({
       files: {

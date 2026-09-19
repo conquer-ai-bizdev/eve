@@ -305,6 +305,27 @@ describe("createNodeHarnessTools", () => {
     }
   });
 
+  it("waits for an opt-in blocking local subagent", async () => {
+    const tool = createPreparedRuntimeSubagentTool({
+      description: "Decide from supplied evidence.",
+      execution: "blocking",
+      kind: "subagent",
+      logicalPath: "subagents/decider",
+      name: "decider",
+      nodeId: "subagents/decider",
+      sourceId: "subagents/decider",
+      sourceKind: "module",
+    });
+    const tools = createNodeHarnessTools({
+      node: await createNodeWithSourceOwnedTools({ names: ["agent"], turnTools: [tool] }),
+    });
+
+    expect(tools.get("decider")?.execution).toBeUndefined();
+    expect(tools.get("decider")?.execute).toBeUndefined();
+    expect(tools.get("decider")?.resultKind).toBe("subagent");
+    expect(tools.get("decider")?.workflowId).toBe("workflow//eve//subagentToolExecuteWorkflow");
+  });
+
   it("does not recreate task tools absent from the compiled graph", async () => {
     const tools = createNodeHarnessTools({
       node: await createNodeWithSourceOwnedTools({ names: ["task_update"] }),

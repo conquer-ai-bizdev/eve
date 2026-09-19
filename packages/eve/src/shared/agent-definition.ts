@@ -327,6 +327,7 @@ export type InternalAgentDefinition = {
   outputSchema?: JsonObject;
   reasoning?: AgentReasoningDefinition;
   source?: ModuleSourceRef;
+  subagentExecution?: "background" | "blocking";
   limits?: AgentLimitsDefinition;
 };
 
@@ -373,6 +374,17 @@ type PublicAgentDefinitionBase = {
    * per-message output schema.
    */
   readonly outputSchema?: StandardJSONSchemaV1<unknown, unknown> | JsonObject;
+  /**
+   * How a parent waits when this agent is invoked as a declared subagent.
+   *
+   * `"background"` returns a task receipt immediately and later delivers the
+   * result through a task notification. `"blocking"` keeps the parent tool
+   * call open until this subagent returns, so the parent can consume the result
+   * in the same turn.
+   *
+   * @default "background"
+   */
+  readonly subagentExecution?: "background" | "blocking";
 };
 
 /**
